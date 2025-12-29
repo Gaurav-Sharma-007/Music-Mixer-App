@@ -16,8 +16,9 @@ export class Crossfader {
         this.inputA.connect(this.output);
         this.inputB.connect(this.output);
 
-        // Connect output to destination (speakers)
-        this.output.connect(this.context.destination);
+        // Output is now left unconnected. 
+        // usage: crossfader.output.connect(destination)
+
 
         // Initialize at center (0.5)
         this.setFaderPosition(0.5);

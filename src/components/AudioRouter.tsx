@@ -1,16 +1,22 @@
 import React from 'react';
-import { useAudioRouter, type AudioDevice } from '../hooks/useAudioRouter';
+import type { AudioDevice } from '../hooks/useAudioRouter';
 
-export const AudioRouter: React.FC = () => {
-    const {
-        isCapturing,
-        devices,
-        selectedDeviceIds,
-        startCapture,
-        stopCapture,
-        toggleDevice,
-        refreshDevices
-    } = useAudioRouter();
+interface AudioRouterProps {
+    isCapturing: boolean;
+    devices: AudioDevice[];
+    selectedDeviceIds: Set<string>;
+    toggleDevice: (deviceId: string) => void;
+    refreshDevices: () => Promise<void>;
+}
+
+export const AudioRouter: React.FC<AudioRouterProps> = ({
+    isCapturing,
+    devices,
+    selectedDeviceIds,
+    toggleDevice,
+    refreshDevices
+}) => {
+    // Hook logic hoisted to parent
 
     return (
         <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 w-full max-w-md mx-auto">
@@ -19,24 +25,9 @@ export const AudioRouter: React.FC = () => {
             </h2>
 
             <div className="mb-6">
-                {!isCapturing ? (
-                    <button
-                        onClick={startCapture}
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition flex items-center justify-center gap-2"
-                    >
-                        <span>Start System Audio Capture</span>
-                    </button>
-                ) : (
-                    <button
-                        onClick={stopCapture}
-                        className="w-full py-3 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition flex items-center justify-center gap-2"
-                    >
-                        <span>Stop Capture</span>
-                    </button>
-                )}
-
                 <p className="text-xs text-gray-400 mt-2 text-center">
-                    Note: Select "System Audio" in the browser popup.
+                    Audio is automatically captured from the mixer. <br />
+                    Select devices below to route audio to them.
                 </p>
             </div>
 
@@ -64,7 +55,7 @@ export const AudioRouter: React.FC = () => {
                                     type="checkbox"
                                     checked={selectedDeviceIds.has(device.deviceId)}
                                     onChange={() => toggleDevice(device.deviceId)}
-                                    disabled={!isCapturing}
+
                                     className="w-5 h-5 text-indigo-500 rounded focus:ring-indigo-500 bg-gray-700 border-gray-600"
                                 />
                                 <div className="ml-3 overflow-hidden">

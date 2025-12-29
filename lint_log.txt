@@ -1,0 +1,152 @@
+
+> music-mixer-app@0.0.0 lint
+> eslint .
+
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx
+  184:10  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx:184:10
+  182 |
+  183 |         {/* DECK A */}
+> 184 |         {deckARef.current && (
+      |          ^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  185 |           <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
+  186 |             <DeckControls deck={deckARef.current} title="DECK A" color="blue" />
+  187 |           </div>                                                                                                                              react-hooks/refs
+  184:10  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx:184:10
+  182 |
+  183 |         {/* DECK A */}
+> 184 |         {deckARef.current && (
+      |          ^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  185 |           <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
+  186 |             <DeckControls deck={deckARef.current} title="DECK A" color="blue" />
+  187 |           </div>                                                                                                                              react-hooks/refs
+  186:33  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx:186:33
+  184 |         {deckARef.current && (
+  185 |           <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
+> 186 |             <DeckControls deck={deckARef.current} title="DECK A" color="blue" />
+      |                                 ^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  187 |           </div>
+  188 |         )}
+  189 |                                                                                                                   react-hooks/refs
+  191:10  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx:191:10
+  189 |
+  190 |         {/* MIXER */}
+> 191 |         {crossfaderRef.current && (
+      |          ^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  192 |           <div className="flex-none w-full lg:w-32 flex items-center justify-center z-20">
+  193 |             <div className="p-6 bg-black/40 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-2xl h-full lg:h-[500px] flex flex-col justify-center">
+  194 |               <Mixer crossfader={crossfaderRef.current} />               react-hooks/refs
+  191:10  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx:191:10
+  189 |
+  190 |         {/* MIXER */}
+> 191 |         {crossfaderRef.current && (
+      |          ^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  192 |           <div className="flex-none w-full lg:w-32 flex items-center justify-center z-20">
+  193 |             <div className="p-6 bg-black/40 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-2xl h-full lg:h-[500px] flex flex-col justify-center">
+  194 |               <Mixer crossfader={crossfaderRef.current} />               react-hooks/refs
+  194:34  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx:194:34
+  192 |           <div className="flex-none w-full lg:w-32 flex items-center justify-center z-20">
+  193 |             <div className="p-6 bg-black/40 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-2xl h-full lg:h-[500px] flex flex-col justify-center">
+> 194 |               <Mixer crossfader={crossfaderRef.current} />
+      |                                  ^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  195 |             </div>
+  196 |           </div>
+  197 |         )}  react-hooks/refs
+  200:10  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx:200:10
+  198 |
+  199 |         {/* DECK B */}
+> 200 |         {deckBRef.current && (
+      |          ^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  201 |           <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
+  202 |             <DeckControls deck={deckBRef.current} title="DECK B" color="purple" />
+  203 |           </div>                                                                                                                            react-hooks/refs
+  200:10  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx:200:10
+  198 |
+  199 |         {/* DECK B */}
+> 200 |         {deckBRef.current && (
+      |          ^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  201 |           <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
+  202 |             <DeckControls deck={deckBRef.current} title="DECK B" color="purple" />
+  203 |           </div>                                                                                                                            react-hooks/refs
+  202:33  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\App.tsx:202:33
+  200 |         {deckBRef.current && (
+  201 |           <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
+> 202 |             <DeckControls deck={deckBRef.current} title="DECK B" color="purple" />
+      |                                 ^^^^^^^^^^^^^^^^ Cannot access ref value during render
+  203 |           </div>
+  204 |         )}
+  205 |       </main>                                                                                                   react-hooks/refs
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\audio\AudioContextManager.ts
+  6:68  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\audio\Deck.ts
+  70:9   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  76:9   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  78:9   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  85:17  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  88:22  error  'e' is defined but never used                                                                                        @typescript-eslint/no-unused-vars
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\components\DeckControls.tsx
+  41:13  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  45:21  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\hooks\useAudioRouter.ts
+   9:12  error  'isCapturing' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-vars
+  43:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\myspa\.gemini\antigravity\scratch\Music-Mixer-App\src\hooks\useAudioRouter.ts:43:9
+  41 |     // Initial device scan
+  42 |     useEffect(() => {
+> 43 |         refreshDevices();
+     |         ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  44 |         navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
+  45 |         return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices);
+  46 |     }, [refreshDevices]);  react-hooks/set-state-in-effect
+  83:17  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               @typescript-eslint/ban-ts-comment
+  86:25  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               @typescript-eslint/ban-ts-comment
+
+✖ 21 problems (21 errors, 0 warnings)
+

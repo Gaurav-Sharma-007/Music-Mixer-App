@@ -7,36 +7,82 @@ import Mixer from './components/Mixer';
 import AnimatedBackground from './components/AnimatedBackground';
 import { AudioRouter } from './components/AudioRouter';
 
+import { useAudioRouter } from './hooks/useAudioRouter';
+
 const App: React.FC = () => {
   const [started, setStarted] = useState(false);
   const [showRouter, setShowRouter] = useState(false);
 
-  // Use refs to persist audio instances across renders
-  const deckARef = useRef<Deck | null>(null);
-  const deckBRef = useRef<Deck | null>(null);
-  const crossfaderRef = useRef<Crossfader | null>(null);
+  // Use state to persist and trigger renders for audio instances
+  const [deckA] = useState(() => new Deck());
+  const [deckB] = useState(() => new Deck());
+  const [crossfader] = useState(() => new Crossfader());
+
+  // Local gain still needs ref as it's not a render dependency but an audio graph node
+  const localGainRef = useRef<GainNode | null>(null);
+
+  const [localMuted, setLocalMuted] = useState(false);
+  const [mainStream, setMainStream] = useState<MediaStream | null>(null);
+
+  // Hoisted Audio Router State
+  const {
+    isCapturing,
+    devices,
+    selectedDeviceIds,
+    setSourceStream,
+    toggleDevice,
+    refreshDevices
+  } = useAudioRouter();
+
+  // Sync Main Stream to Router
+  useEffect(() => {
+    setSourceStream(mainStream);
+  }, [mainStream, setSourceStream]);
+
+  // Auto-mute local when routing is strictly active (User Request Fix)
+  useEffect(() => {
+    if (selectedDeviceIds.size > 0) {
+      setLocalMuted(true);
+    }
+  }, [selectedDeviceIds.size]);
+
 
   useEffect(() => {
-    // Initialize Audio Engine
-    const deckA = new Deck();
-    const deckB = new Deck();
-    const crossfader = new Crossfader();
+    // Initialize Audio Graph
+    const ctx = AudioContextManager.getInstance().getContext();
 
     // Connect Decks to Crossfader
-    // DeckA -> Crossfader Input A
     deckA.outputNode.connect(crossfader.inputA);
-    // DeckB -> Crossfader Input B
     deckB.outputNode.connect(crossfader.inputB);
 
-    deckARef.current = deckA;
-    deckBRef.current = deckB;
-    crossfaderRef.current = crossfader;
+    // Create Routing Logic
+    // 1. Local Output Path: Crossfader -> LocalGain -> Destination
+    const localGain = ctx.createGain();
+    localGain.gain.value = 1; // Unmuted by default
+    crossfader.output.connect(localGain);
+    localGain.connect(ctx.destination);
 
-    return () => {
-      // Cleanup if needed (rare for App)
-      // Usually disconnect nodes, close context if single page app navigates away
-    };
-  }, []);
+    // 2. Stream Output Path: Crossfader -> MediaStreamDestination
+    const streamDest = ctx.createMediaStreamDestination();
+    crossfader.output.connect(streamDest);
+
+    // Store refs
+    localGainRef.current = localGain;
+
+    // Set Stream State
+    setMainStream(streamDest.stream);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deckA, deckB, crossfader]);
+
+  // Handle Local Muting
+  useEffect(() => {
+    if (localGainRef.current) {
+      const ctx = AudioContextManager.getInstance().getContext();
+      const targetGain = localMuted ? 0 : 1;
+      localGainRef.current.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.05);
+    }
+  }, [localMuted]);
 
   const handleStart = async () => {
     const cm = AudioContextManager.getInstance();
@@ -44,7 +90,31 @@ const App: React.FC = () => {
     setStarted(true);
   };
 
+  // ... (render logic) ...
+
+  // Audio Router Overlay Render
+  const renderRouter = () => (
+    <div className="absolute top-20 right-6 z-50 w-full max-w-md animate-fade-in-up">
+      <div className="relative">
+        <button
+          onClick={() => setShowRouter(false)}
+          className="absolute -top-3 -right-3 w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center text-white shadow-lg border border-gray-600 z-10"
+        >
+          ✕
+        </button>
+        <AudioRouter
+          isCapturing={isCapturing}
+          devices={devices}
+          selectedDeviceIds={selectedDeviceIds}
+          toggleDevice={toggleDevice}
+          refreshDevices={refreshDevices}
+        />
+      </div>
+    </div>
+  );
+
   if (!started) {
+    // ... (start screen) ...
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white relative overflow-hidden">
         <AnimatedBackground />
@@ -75,7 +145,6 @@ const App: React.FC = () => {
     <div className="min-h-screen text-white flex flex-col font-sans relative">
       <AnimatedBackground />
 
-      {/* Header */}
       <header className="flex-none p-6 flex justify-between items-center z-10 border-b border-white/5 bg-black/20 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-neon-blue to-neon-purple animate-pulse-slow"></div>
@@ -84,13 +153,49 @@ const App: React.FC = () => {
           </h1>
         </div>
         <div className="flex items-center gap-4">
+          <div className="text-xs font-mono text-gray-500 border border-white/10 px-2 py-1 rounded-sm bg-black/20">
+            Ctx: {AudioContextManager.getInstance().getContext().state}
+          </div>
           {started && (
-            <button
-              onClick={() => setShowRouter(!showRouter)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition"
-            >
-              Multi-Device Router
-            </button>
+            <>
+              {/* Test Tone Debug */}
+              <button
+                onClick={() => {
+                  const ctx = AudioContextManager.getInstance().getContext();
+                  console.log('Playing test tone, ctx state:', ctx.state);
+                  const osc = ctx.createOscillator();
+                  const gain = ctx.createGain();
+                  osc.connect(gain);
+                  gain.connect(ctx.destination);
+                  osc.frequency.setValueAtTime(440, ctx.currentTime);
+                  gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                  osc.start();
+                  osc.stop(ctx.currentTime + 0.3);
+                }}
+                className="px-3 py-1.5 bg-yellow-600/20 text-yellow-500 rounded text-xs hover:bg-yellow-600/40 border border-yellow-600/30"
+              >
+                Test Beep
+              </button>
+
+              {/* Local Mute Toggle */}
+              <button
+                onClick={() => setLocalMuted(!localMuted)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${localMuted
+                  ? 'bg-red-500/20 border-red-500/50 text-red-200 hover:bg-red-500/30'
+                  : 'bg-green-500/20 border-green-500/50 text-green-200 hover:bg-green-500/30'
+                  }`}
+                title="Mute local speakers (prevent double audio when routing)"
+              >
+                {localMuted ? '🔇 Muted' : '🔊 On'}
+              </button>
+
+              <button
+                onClick={() => setShowRouter(!showRouter)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition"
+              >
+                Router
+              </button>
+            </>
           )}
           <div className="text-xs font-mono text-gray-500 border border-white/10 px-3 py-1 rounded-full bg-white/5">
             READY TO MIX
@@ -99,43 +204,31 @@ const App: React.FC = () => {
       </header>
 
       {/* Audio Router Overlay */}
-      {showRouter && (
-        <div className="absolute top-20 right-6 z-50 w-full max-w-md animate-fade-in-up">
-          <div className="relative">
-            <button
-              onClick={() => setShowRouter(false)}
-              className="absolute -top-3 -right-3 w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center text-white shadow-lg border border-gray-600 z-10"
-            >
-              ✕
-            </button>
-            <AudioRouter />
-          </div>
-        </div>
-      )}
+      {showRouter && renderRouter()}
 
       {/* Main Workspace */}
       <main className="flex-grow flex flex-col lg:flex-row items-center justify-center gap-6 p-6 lg:p-12 relative z-10">
 
         {/* DECK A */}
-        {deckARef.current && (
+        {deckA && (
           <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
-            <DeckControls deck={deckARef.current} title="DECK A" color="blue" />
+            <DeckControls deck={deckA} title="DECK A" color="blue" />
           </div>
         )}
 
         {/* MIXER */}
-        {crossfaderRef.current && (
+        {crossfader && deckA && deckB && (
           <div className="flex-none w-full lg:w-32 flex items-center justify-center z-20">
             <div className="p-6 bg-black/40 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-2xl h-full lg:h-[500px] flex flex-col justify-center">
-              <Mixer crossfader={crossfaderRef.current} />
+              <Mixer crossfader={crossfader} deckA={deckA} deckB={deckB} />
             </div>
           </div>
         )}
 
         {/* DECK B */}
-        {deckBRef.current && (
+        {deckB && (
           <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
-            <DeckControls deck={deckBRef.current} title="DECK B" color="purple" />
+            <DeckControls deck={deckB} title="DECK B" color="purple" />
           </div>
         )}
       </main>

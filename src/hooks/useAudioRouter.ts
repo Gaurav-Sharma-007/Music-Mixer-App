@@ -6,11 +6,18 @@ export interface AudioDevice {
 }
 
 export function useAudioRouter() {
-    const [isCapturing, setIsCapturing] = useState(false);
     const [devices, setDevices] = useState<AudioDevice[]>([]);
     const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
     const [stream, setStream] = useState<MediaStream | null>(null);
     const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+    // Allow external stream injection
+    const setSourceStream = useCallback((newStream: MediaStream | null) => {
+        // Stop old stream tracks if we were the ones who created it? 
+        // Actually, for internal routing, we usually don't want to stop the AudioContext destination stream.
+        // So just swapping reference is fine.
+        setStream(newStream);
+    }, []);
 
     // Detect available audio output devices
     const refreshDevices = useCallback(async () => {
@@ -32,53 +39,19 @@ export function useAudioRouter() {
 
     // Initial device scan
     useEffect(() => {
-        refreshDevices();
+        const initDevices = async () => {
+            await refreshDevices();
+        };
+        initDevices();
         navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
         return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices);
     }, [refreshDevices]);
 
-    // Start capturing system audio
-    const startCapture = async () => {
-        try {
-            const mediaStream = await navigator.mediaDevices.getDisplayMedia({
-                video: true, // Required to get the picker, even if we assume user selects audio
-                audio: {
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: false,
-                    channelCount: 2,
-                    // @ts-ignore
-                    latency: 0,
-                },
-            });
+    // Start capturing system audio - DEPRECATED/REMOVED in favor of internal routing
+    // const startCapture = async () => { ... }
 
-            // We only care about the audio track
-            const audioTrack = mediaStream.getAudioTracks()[0];
-            if (!audioTrack) {
-                throw new Error('No audio track selected. Please make sure to verify "Share Audio" in the browser prompt.');
-            }
-
-            // Stop the video track immediately to save resources/UI clutter
-            mediaStream.getVideoTracks().forEach(track => track.stop());
-
-            // If user stops sharing from browser UI
-            audioTrack.onended = () => stopCapture();
-
-            // Create a new stream with just the audio
-            const audioStream = new MediaStream([audioTrack]);
-            setStream(audioStream);
-            setIsCapturing(true);
-        } catch (err) {
-            console.error('Error start capturing:', err);
-        }
-    };
-
-    const stopCapture = useCallback(() => {
-        if (stream) {
-            stream.getTracks().forEach((t) => t.stop());
-        }
+    const stopRouting = useCallback(() => {
         setStream(null);
-        setIsCapturing(false);
 
         // Cleanup all audio elements
         audioElementsRef.current.forEach((audio) => {
@@ -86,7 +59,7 @@ export function useAudioRouter() {
             audio.srcObject = null;
         });
         audioElementsRef.current.clear();
-    }, [stream]);
+    }, []);
 
     // Toggle selection of a device
     const toggleDevice = (deviceId: string) => {
@@ -108,10 +81,8 @@ export function useAudioRouter() {
             if (!audioElementsRef.current.has(deviceId)) {
                 const audio = new Audio();
                 audio.srcObject = stream;
-                // @ts-ignore - setSinkId is not yet in standard TS dom lib for all browsers
                 if (audio.setSinkId) {
                     try {
-                        // @ts-ignore
                         await audio.setSinkId(deviceId);
                         await audio.play();
                         audioElementsRef.current.set(deviceId, audio);
@@ -135,11 +106,11 @@ export function useAudioRouter() {
     }, [selectedDeviceIds, stream]);
 
     return {
-        isCapturing,
+        isCapturing: !!stream,
         devices,
         selectedDeviceIds,
-        startCapture,
-        stopCapture,
+        setSourceStream,
+        stopRouting,
         toggleDevice,
         refreshDevices
     };
