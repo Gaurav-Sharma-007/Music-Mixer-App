@@ -5,9 +5,11 @@ import { AudioContextManager } from './audio/AudioContextManager';
 import DeckControls from './components/DeckControls';
 import Mixer from './components/Mixer';
 import AnimatedBackground from './components/AnimatedBackground';
+import { AudioRouter } from './components/AudioRouter';
 
 const App: React.FC = () => {
   const [started, setStarted] = useState(false);
+  const [showRouter, setShowRouter] = useState(false);
 
   // Use refs to persist audio instances across renders
   const deckARef = useRef<Deck | null>(null);
@@ -81,10 +83,35 @@ const App: React.FC = () => {
             FLUX <span className="font-light text-gray-400">DJ</span>
           </h1>
         </div>
-        <div className="text-xs font-mono text-gray-500 border border-white/10 px-3 py-1 rounded-full bg-white/5">
-          READY TO MIX
+        <div className="flex items-center gap-4">
+          {started && (
+            <button
+              onClick={() => setShowRouter(!showRouter)}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition"
+            >
+              Multi-Device Router
+            </button>
+          )}
+          <div className="text-xs font-mono text-gray-500 border border-white/10 px-3 py-1 rounded-full bg-white/5">
+            READY TO MIX
+          </div>
         </div>
       </header>
+
+      {/* Audio Router Overlay */}
+      {showRouter && (
+        <div className="absolute top-20 right-6 z-50 w-full max-w-md animate-fade-in-up">
+          <div className="relative">
+            <button
+              onClick={() => setShowRouter(false)}
+              className="absolute -top-3 -right-3 w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center text-white shadow-lg border border-gray-600 z-10"
+            >
+              ✕
+            </button>
+            <AudioRouter />
+          </div>
+        </div>
+      )}
 
       {/* Main Workspace */}
       <main className="flex-grow flex flex-col lg:flex-row items-center justify-center gap-6 p-6 lg:p-12 relative z-10">

@@ -52,11 +52,31 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
         deck.setVolume(val);
     };
 
+    // Convert slider value (0-2) to dB for BiquadFilter
+    // 0 -> -26dB (Cut)
+    // 1 -> 0dB (Flat)
+    // 2 -> +6dB (Boost)
+    const mapSliderToGain = (val: number): number => {
+        if (val < 1) {
+            return (val - 1) * 26;
+        } else {
+            return (val - 1) * 6;
+        }
+    };
+
     const handleEQChange = (band: 'low' | 'mid' | 'high', val: number) => {
         const newEq = { ...eq, [band]: val };
         setEq(newEq);
-        deck.setEQ(newEq.low, newEq.mid, newEq.high);
+        // Map slider value to dB before sending to Deck/EQ
+        deck.setEQ(
+            mapSliderToGain(band === 'low' ? val : newEq.low),
+            mapSliderToGain(band === 'mid' ? val : newEq.mid),
+            mapSliderToGain(band === 'high' ? val : newEq.high)
+        );
     };
+
+    // Explicitly typed array for mapping
+    const bands: Array<'low' | 'mid' | 'high'> = ['low', 'mid', 'high'];
 
     return (
         <div className={`p-6 rounded-3xl bg-black/40 backdrop-blur-xl border border-white/10 ${glowColor} transition-all duration-300 w-full`}>
@@ -82,7 +102,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
 
                 {/* EQ Section - Vertical Sliders */}
                 <div className="col-span-3 grid grid-cols-3 gap-2 bg-black/20 rounded-xl p-3 border border-white/5">
-                    {['low', 'mid', 'high'].map((band) => (
+                    {bands.map((band) => (
                         <div key={band} className="flex flex-col items-center h-40 justify-between py-2 group">
                             <div className="relative w-2 h-full bg-gray-800 rounded-full overflow-hidden group-hover:bg-gray-700 transition-colors">
                                 <input
@@ -90,14 +110,14 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
                                     min="0"
                                     max="2"
                                     step="0.1"
-                                    value={eq[band as keyof typeof eq]}
-                                    onChange={(e) => handleEQChange(band as any, parseFloat(e.target.value))}
+                                    value={eq[band]}
+                                    onChange={(e) => handleEQChange(band, parseFloat(e.target.value))}
                                     className="absolute -rotate-90 w-32 h-2 origin-center -translate-x-[60px] translate-y-[64px] bg-transparent appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(255,255,255,0.5)]"
                                 />
                                 {/* Visual Fill Level (Simplistic) */}
                                 <div
                                     className={`absolute bottom-0 left-0 right-0 ${buttonBg} opacity-50 transition-all duration-75`}
-                                    style={{ height: `${(eq[band as keyof typeof eq] / 2) * 100}%` }}
+                                    style={{ height: `${(eq[band] / 2) * 100}%` }}
                                 ></div>
                             </div>
                             <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mt-2 group-hover:text-white transition-colors">{band}</span>
