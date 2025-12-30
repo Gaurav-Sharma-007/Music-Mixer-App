@@ -123,10 +123,13 @@ export class Deck {
         this.gainNode.gain.setTargetAtTime(value, this.context.currentTime, 0.01);
     }
 
-    public setEQ(low: number, mid: number, high: number) {
-        this.eq.setLow(low);
-        this.eq.setMid(mid);
-        this.eq.setHigh(high);
+
+    public setEQGain(bandIndex: number, gain: number) {
+        this.eq.setGain(bandIndex, gain);
+    }
+
+    public getEQFrequencies(): number[] {
+        return this.eq.getFrequencies();
     }
 
     public getAnalyser(): AnalyserNode {

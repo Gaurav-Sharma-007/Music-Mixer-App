@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Deck } from '../audio/Deck';
 import FileLoader from './FileLoader';
 import VinylPlatter from './VinylPlatter';
+import { EQ_PRESETS, type EQPresetName } from '../audio/EQPresets';
 
 interface DeckControlsProps {
     deck: Deck;
@@ -12,7 +13,8 @@ interface DeckControlsProps {
 const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [volume, setVolume] = useState(0.8);
-    const [eq, setEq] = useState({ low: 1, mid: 1, high: 1 });
+    // Initialize 8 bands centered at 1 (0dB)
+    const [eqGains, setEqGains] = useState<number[]>([1, 1, 1, 1, 1, 1, 1, 1]);
     const [fx, setFx] = useState({ delay: 0, reverb: 0 });
     const [trackName, setTrackName] = useState('No Track Loaded');
     const [isLoaded, setIsLoaded] = useState(false);
@@ -107,14 +109,21 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
         }
     };
 
-    const handleEQChange = (band: 'low' | 'mid' | 'high', val: number) => {
-        const newEq = { ...eq, [band]: val };
-        setEq(newEq);
-        deck.setEQ(
-            mapSliderToGain(band === 'low' ? val : newEq.low),
-            mapSliderToGain(band === 'mid' ? val : newEq.mid),
-            mapSliderToGain(band === 'high' ? val : newEq.high)
-        );
+    const handleEQChange = (index: number, val: number) => {
+        const newEq = [...eqGains];
+        newEq[index] = val;
+        setEqGains(newEq);
+        deck.setEQGain(index, mapSliderToGain(val));
+    };
+
+    const applyPreset = (presetName: EQPresetName) => {
+        const presetGains = EQ_PRESETS[presetName];
+        if (presetGains) {
+            setEqGains(presetGains);
+            presetGains.forEach((gain, index) => {
+                deck.setEQGain(index, mapSliderToGain(gain));
+            });
+        }
     };
 
     const handleFxChange = (effect: 'delay' | 'reverb', val: number) => {
@@ -124,7 +133,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
         if (effect === 'reverb') deck.reverb.setMix(val);
     };
 
-    const bands: Array<'low' | 'mid' | 'high'> = ['low', 'mid', 'high'];
+    const bands = ['60', '150', '400', '1K', '2.4K', '6K', '12K', '15K'];
 
     return (
         <div className={`p-6 rounded-3xl bg-zinc-900 border ${borderColor} shadow-2xl relative overflow-hidden transition-all duration-300 w-full`}>
@@ -175,25 +184,42 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
                 </div>
 
                 {/* Mixer Strip */}
-                <div className="flex-none w-full xl:w-32 flex flex-col gap-6 bg-black/20 rounded-xl p-4 border border-white/5">
+                <div className="flex-none w-full xl:w-72 flex flex-col gap-6 bg-black/20 rounded-xl p-4 border border-white/5">
 
                     {/* EQ Section */}
-                    <div className="space-y-4">
-                        <div className="text-[10px] font-bold text-gray-500 text-center tracking-widest border-b border-white/5 pb-1">EQ</div>
-                        {bands.map((band) => (
-                            <div key={band} className="flex flex-col items-center gap-1">
-                                <div className="text-[9px] uppercase text-gray-400 font-mono">{band}</div>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="2"
-                                    step="0.1"
-                                    value={eq[band]}
-                                    onChange={(e) => handleEQChange(band, parseFloat(e.target.value))}
-                                    className="w-full h-1 bg-gray-700 rounded appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gray-300"
-                                />
-                            </div>
-                        ))}
+                    <div className="space-y-2">
+                        <div className="flex justify-between items-center border-b border-white/5 pb-2 mb-2">
+                            <div className="text-[10px] font-bold text-gray-500 text-center tracking-widest">GRAPHIC EQ</div>
+                            <select
+                                onChange={(e) => applyPreset(e.target.value as EQPresetName)}
+                                className="bg-black/60 text-[10px] text-neon-blue border border-neon-blue/30 rounded-md px-2 py-1 outline-none focus:border-neon-blue focus:shadow-[0_0_10px_rgba(0,255,255,0.3)] transition-all uppercase tracking-wider backdrop-blur-md cursor-pointer hover:bg-black/80 hover:border-neon-blue/50"
+                                defaultValue=""
+                            >
+                                <option value="" disabled>PRESET</option>
+                                {Object.keys(EQ_PRESETS).map(name => (
+                                    <option key={name} value={name}>{name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex flex-row justify-between items-end h-32 gap-1 pt-2">
+                            {bands.map((band, index) => (
+                                <div key={band} className="flex flex-col items-center justify-end h-full gap-1 flex-1">
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="2"
+                                        step="0.1"
+                                        value={eqGains[index]}
+                                        onChange={(e) => handleEQChange(index, parseFloat(e.target.value))}
+                                        // Use style for vertical slider support in WebKit
+                                        style={{ WebkitAppearance: 'slider-vertical' }}
+                                        className="w-full h-full bg-transparent appearance-none cursor-pointer [&::-webkit-slider-thumb]:bg-gray-300 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-moz-range-thumb]:bg-gray-300"
+                                    />
+                                    <div className="text-[8px] uppercase text-gray-500 font-mono -rotate-45 mt-1 origin-top-left translate-x-1">{band}</div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
 
                     {/* FX Section */}
