@@ -23,7 +23,10 @@ export function useAudioRouter() {
     const refreshDevices = useCallback(async () => {
         try {
             // Permission might be needed to see labels
-            await navigator.mediaDevices.getUserMedia({ audio: true });
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Stop tracks immediately to release mic
+            stream.getTracks().forEach(t => t.stop());
+
             const allDevices = await navigator.mediaDevices.enumerateDevices();
             const outputDevices = allDevices
                 .filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications')

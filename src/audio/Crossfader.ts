@@ -16,8 +16,8 @@ export class Crossfader {
         this.inputA.connect(this.output);
         this.inputB.connect(this.output);
 
-        // Output is now left unconnected. 
-        // usage: crossfader.output.connect(destination)
+        // Connect Output to Master Bus
+        this.output.connect(AudioContextManager.getInstance().getMasterGain());
 
 
         // Initialize at center (0.5)

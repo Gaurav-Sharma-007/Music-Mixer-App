@@ -218,8 +218,12 @@ const App: React.FC = () => {
 
         {/* MIXER */}
         {crossfader && deckA && deckB && (
-          <div className="flex-none w-full lg:w-32 flex items-center justify-center z-20">
-            <div className="p-6 bg-black/40 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-2xl h-full lg:h-[500px] flex flex-col justify-center">
+          <div className="flex-none w-full lg:w-auto lg:min-w-[280px] z-30 flex items-center justify-center pointer-events-none lg:pointer-events-auto my-4 lg:my-0">
+            {/* 
+                Added pointer-events-none/auto wrapper trick just in case, but really we just need space. 
+                Actually, simpler: Just give it space. 
+             */}
+            <div className="w-full max-w-sm pointer-events-auto p-6 bg-black/60 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] h-auto min-h-[500px] flex flex-col justify-between">
               <Mixer crossfader={crossfader} deckA={deckA} deckB={deckB} />
             </div>
           </div>

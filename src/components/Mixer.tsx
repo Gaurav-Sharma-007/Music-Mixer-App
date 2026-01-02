@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Crossfader } from '../audio/Crossfader';
 import { Deck } from '../audio/Deck';
+import MasterControls from './MasterControls';
 
 interface MixerProps {
     crossfader: Crossfader;
@@ -126,8 +127,10 @@ const Mixer: React.FC<MixerProps> = ({ crossfader, deckA, deckB }) => {
     };
 
     return (
-        <div className="flex flex-col items-center justify-between h-full w-full">
-            <h2 className="text-xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-r from-gray-200 to-gray-500 uppercase tracking-[0.2em]">Mixer</h2>
+        <div className="flex flex-col items-center justify-between h-full w-full gap-4">
+            <h2 className="text-xl font-black mb-2 text-transparent bg-clip-text bg-gradient-to-r from-gray-200 to-gray-500 uppercase tracking-[0.2em]">Mixer</h2>
+
+            <MasterControls />
 
             {/* VU Meters (Real-time) */}
             <div className="flex gap-4 mb-4 h-48">

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Deck } from '../audio/Deck';
 import FileLoader from './FileLoader';
 import VinylPlatter from './VinylPlatter';
+import SourceSelector from './SourceSelector';
 import { EQ_PRESETS, type EQPresetName } from '../audio/EQPresets';
 
 interface DeckControlsProps {
@@ -19,6 +20,8 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
     const [trackName, setTrackName] = useState('No Track Loaded');
     const [isLoaded, setIsLoaded] = useState(false);
     const [inputType, setInputType] = useState<'file' | 'external'>('file');
+    const [sampleLoaded, setSampleLoaded] = useState([false, false, false, false]);
+    const [showSourceSelector, setShowSourceSelector] = useState(false);
 
     const accentColor = color === 'blue' ? 'text-neon-blue' : 'text-neon-purple';
     const borderColor = color === 'blue' ? 'border-neon-blue/30' : 'border-neon-purple/30';
@@ -38,37 +41,57 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
         }
     };
 
-    const handleExternalInput = async () => {
+    const handleExternalInputClick = () => {
+        // Show our custom selector
+        setShowSourceSelector(true);
+    };
+
+    const handleSourceSelected = async (sourceId: string) => {
+        setShowSourceSelector(false);
         try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: { width: 1, height: 1 }, // Minimal video
+            const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
-                    // @ts-expect-error - experimental property
-                    suppressLocalAudioPlayback: true,
+                    mandatory: {
+                        chromeMediaSource: 'desktop',
+                        chromeMediaSourceId: sourceId
+                    },
+                    // Disable all auto-processing for high-fidelity music playback
                     echoCancellation: false,
                     autoGainControl: false,
                     noiseSuppression: false,
+                    googAutoGainControl: false,
                     channelCount: 2
+                } as any,
+                video: {
+                    mandatory: {
+                        chromeMediaSource: 'desktop',
+                        chromeMediaSourceId: sourceId,
+                        // Low framerate is fine as we stop it immediately, 
+                        // but setting it helps performance init
+                        maxFrameRate: 1
+                    }
                 }
-            });
+            } as any);
 
+            // We only need audio
             const audioTrack = stream.getAudioTracks()[0];
             if (!audioTrack) {
-                alert("No audio track found. Make sure to share 'Tab Audio' or 'System Audio'.");
+                alert("No audio track found. Ensure you selected a source with audio.");
                 return;
             }
 
-            // Stop video immediately
+            // Stop video immediately to save resources
             stream.getVideoTracks().forEach(t => t.stop());
 
             await deck.loadStream(new MediaStream([audioTrack]));
             setTrackName('External Input (Live)');
             setIsLoaded(true);
-            setIsPlaying(true); // Auto-play for live stream
+            setIsPlaying(true);
             setInputType('external');
             deck.play();
         } catch (err) {
-            console.error(err);
+            console.error("Error capturing system audio:", err);
+            alert("Failed to capture audio. Permission denied or invalid source.");
         }
     };
 
@@ -131,7 +154,42 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
         setFx(newFx);
         if (effect === 'delay') deck.delay.setMix(val);
         if (effect === 'reverb') deck.reverb.setMix(val);
+        if (effect === 'reverb') deck.reverb.setMix(val);
     };
+
+    const handleSpeedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        deck.setSpeed(parseFloat(e.target.value));
+    };
+
+    const handleBrake = () => {
+        deck.brake();
+        // UI reset is handled by deck.brake() logic (it pauses eventually)
+        // We might want to set IsPlaying to false after a timeout to match deck state?
+        setTimeout(() => setIsPlaying(false), 1000);
+    };
+
+    const handleSamplerClick = async (index: number) => {
+        if (!sampleLoaded[index]) {
+            // Trigger file input
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'audio/*';
+            input.onchange = async (e) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (file) {
+                    const buffer = await file.arrayBuffer();
+                    await deck.loadSample(index, buffer);
+                    const newLoaded = [...sampleLoaded];
+                    newLoaded[index] = true;
+                    setSampleLoaded(newLoaded);
+                }
+            };
+            input.click();
+        } else {
+            deck.playSample(index);
+        }
+    };
+
 
     const bands = ['60', '150', '400', '1K', '2.4K', '6K', '12K', '15K'];
 
@@ -148,13 +206,20 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
                         FILE
                     </button>
                     <button
-                        onClick={handleExternalInput}
+                        onClick={handleExternalInputClick}
                         className={`px-3 py-1 rounded-full border ${inputType === 'external' ? 'bg-red-500/20 border-red-500/50 text-red-200' : 'border-white/10 text-gray-500 hover:text-white'}`}
                     >
                         EXTERNAL
                     </button>
                 </div>
             </div>
+
+            {showSourceSelector && (
+                <SourceSelector
+                    onSelect={handleSourceSelected}
+                    onCancel={() => setShowSourceSelector(false)}
+                />
+            )}
 
             <div className="flex flex-col xl:flex-row gap-8">
                 {/* Turntable Platter */}
@@ -170,16 +235,55 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
                         </div>
                     </div>
 
-                    <div className="mt-6 w-full max-w-[200px]">
-                        <div className="text-[10px] font-bold text-gray-500 text-center mb-1 tracking-widest">TEMPO</div>
-                        <input
-                            type="range"
-                            min="0.92"
-                            max="1.08"
-                            step="0.001"
-                            defaultValue="1"
-                            className="w-full h-1 bg-gray-700 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-gray-300 [&::-webkit-slider-thumb]:rounded-sm"
-                        />
+                    <div className="mt-6 w-full max-w-[200px] space-y-4">
+                        {/* SPEED CONTROL */}
+                        <div>
+                            <div className="flex justify-between items-center mb-1">
+                                <div className="text-[10px] font-bold text-gray-500 tracking-widest">TEMPO</div>
+                                <button
+                                    onClick={handleBrake}
+                                    className="text-[9px] bg-red-900/50 text-red-200 px-2 py-0.5 rounded border border-red-500/30 hover:bg-red-500 hover:text-white transition-colors uppercase tracking-wider"
+                                >
+                                    Brake
+                                </button>
+                            </div>
+                            <input
+                                type="range"
+                                min="0.5"
+                                max="1.5"
+                                step="0.01"
+                                defaultValue="1"
+                                onChange={handleSpeedChange}
+                                className={`w-full h-1 bg-gray-700 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:${color === 'blue' ? 'bg-blue-400' : 'bg-purple-400'} [&::-webkit-slider-thumb]:rounded-sm`}
+                            />
+                        </div>
+
+                        {/* LOOP CONTROL */}
+                        <div className="flex gap-2 justify-between">
+                            <button onClick={() => deck.setLoopIn()} className="flex-1 bg-white/5 border border-white/10 text-gray-400 text-[10px] font-bold py-2 rounded hover:bg-white/10 hover:text-white transition-all uppercase">IN</button>
+                            <button onClick={() => deck.setLoopOut()} className="flex-1 bg-white/5 border border-white/10 text-gray-400 text-[10px] font-bold py-2 rounded hover:bg-white/10 hover:text-white transition-all uppercase">OUT</button>
+                            <button onClick={() => deck.exitLoop()} className="flex-1 bg-white/5 border border-white/10 text-gray-400 text-[10px] font-bold py-2 rounded hover:bg-white/10 hover:text-white transition-all uppercase">EXIT</button>
+                        </div>
+
+                        {/* SAMPLER PADS */}
+                        <div>
+                            <div className="text-[10px] font-bold text-gray-500 tracking-widest mb-1 text-center">SAMPLER</div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[0, 1, 2, 3].map(i => (
+                                    <button
+                                        key={i}
+                                        onClick={() => handleSamplerClick(i)}
+                                        className={`h-10 text-[10px] font-bold border rounded transition-all active:scale-95
+                                            ${sampleLoaded[i]
+                                                ? (color === 'blue' ? 'bg-blue-500/20 border-blue-500 text-blue-200 hover:bg-blue-500/40' : 'bg-purple-500/20 border-purple-500 text-purple-200 hover:bg-purple-500/40')
+                                                : 'bg-black/30 border-white/5 text-gray-600 hover:bg-white/5'
+                                            }`}
+                                    >
+                                        {sampleLoaded[i] ? `PAD ${i + 1}` : '+ LOAD'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
