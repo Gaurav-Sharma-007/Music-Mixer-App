@@ -2,7 +2,7 @@
 
 **BLANCDJ** is a high-performance, touch-friendly DJ mixing application built with React, TypeScript, and the Web Audio API, wrapped in Electron for a native desktop experience. It features dual decks, professional-grade EQ and effects, a sampler, and advanced audio routing capabilities.
 
-![BLANCDJ Logo](/logo.png)
+![BLANCDJ Logo](public/logo.png)
 
 ## 🚀 Key Features
 
