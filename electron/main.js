@@ -13,7 +13,8 @@ function createWindow() {
             contextIsolation: true,
             preload: path.join(__dirname, 'preload.js'),
             zoomFactor: 0.7 // Further reduce zoom level to prevent visual magnification
-        }
+        },
+        icon: path.join(__dirname, '../public/logo.png')
     });
 
     // Use environment variable or argument to detect dev mode

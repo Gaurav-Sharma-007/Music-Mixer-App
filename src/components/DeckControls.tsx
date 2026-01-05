@@ -9,9 +9,10 @@ interface DeckControlsProps {
     deck: Deck;
     title: string;
     color: 'blue' | 'purple';
+    externalLoad?: { file: File; ts: number } | null;
 }
 
-const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
+const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externalLoad }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [volume, setVolume] = useState(0.8);
     // Initialize 8 bands centered at 1 (0dB)
@@ -26,12 +27,46 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
     const accentColor = color === 'blue' ? 'text-neon-blue' : 'text-neon-purple';
     const borderColor = color === 'blue' ? 'border-neon-blue/30' : 'border-neon-purple/30';
 
+    // Handle External File Load (Queue)
+    React.useEffect(() => {
+        if (externalLoad) {
+            handleFileSelect(externalLoad.file);
+        }
+    }, [externalLoad]); // Depend only on externalLoad object reference changing
+
+    const [gateThreshold, setGateThreshold] = useState(-50);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [speed, setSpeed] = useState(1.0);
+
+    // Initial sync
+    React.useEffect(() => {
+        if (deck.noiseGate) {
+            // Deck initializes gate, we just control it
+        }
+    }, [deck]);
+
+    // Animation Loop for Seek Bar & Timer
+    React.useEffect(() => {
+        let rafId: number;
+        const loop = () => {
+            if (isPlaying) {
+                setCurrentTime(deck.getCurrentTime());
+                setDuration(deck.getDuration());
+            }
+            rafId = requestAnimationFrame(loop);
+        };
+        rafId = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(rafId);
+    }, [deck, isPlaying]);
+
     const handleFileSelect = async (file: File) => {
         try {
             setTrackName('Loading...');
             const arrayBuffer = await file.arrayBuffer();
             await deck.load(arrayBuffer);
             setTrackName(file.name);
+            setDuration(deck.getDuration()); // Set initial duration
             setIsLoaded(true);
             setInputType('file');
         } catch (error) {
@@ -157,8 +192,39 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
         if (effect === 'reverb') deck.reverb.setMix(val);
     };
 
+    // --- GATE CONTROL ---
+    const handleGateChange = (val: number) => {
+        setGateThreshold(val);
+        deck.noiseGate.setThreshold(val);
+    };
+
+    const [isolator, setIsolator] = useState({ low: 0.5, mid: 0.5, high: 0.5 });
+    const handleIsolatorChange = (band: 'low' | 'mid' | 'high', val: number) => {
+        setIsolator(prev => ({ ...prev, [band]: val }));
+        deck.setIsolatorGain(band, val);
+    };
+
     const handleSpeedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        deck.setSpeed(parseFloat(e.target.value));
+        const val = parseFloat(e.target.value);
+        setSpeed(val);
+        deck.setSpeed(val);
+    };
+
+    // --- SEEK CONTROL ---
+    const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const time = parseFloat(e.target.value);
+        setCurrentTime(time);
+        deck.seek(time);
+        if (!isPlaying && isLoaded) {
+            // Optional: Auto-play on seek or just move head? 
+            // Standard: just move head.
+        }
+    };
+
+    const formatTime = (t: number) => {
+        const min = Math.floor(t / 60);
+        const sec = Math.floor(t % 60);
+        return `${min}:${sec.toString().padStart(2, '0')}`;
     };
 
     const handleBrake = () => {
@@ -187,6 +253,16 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
             input.click();
         } else {
             deck.playSample(index);
+        }
+    };
+
+    const handleSamplerContextMenu = (e: React.MouseEvent, index: number) => {
+        e.preventDefault();
+        if (sampleLoaded[index]) {
+            deck.unloadSample(index);
+            const newLoaded = [...sampleLoaded];
+            newLoaded[index] = false;
+            setSampleLoaded(newLoaded);
         }
     };
 
@@ -238,24 +314,48 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
                     <div className="mt-6 w-full max-w-[200px] space-y-4">
                         {/* SPEED CONTROL */}
                         <div>
-                            <div className="flex justify-between items-center mb-1">
+                            <div className="flex justify-between items-center mb-2">
                                 <div className="text-[10px] font-bold text-gray-500 tracking-widest">TEMPO</div>
+                                <div className={`text-[10px] font-mono font-bold ${accentColor} bg-black/40 px-2 py-0.5 rounded border border-white/5`}>
+                                    {speed.toFixed(2)}x
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setSpeed(1.0);
+                                        deck.setSpeed(1.0);
+                                    }}
+                                    className="text-[9px] text-gray-400 hover:text-white transition-colors uppercase tracking-wider"
+                                >
+                                    RESET
+                                </button>
                                 <button
                                     onClick={handleBrake}
-                                    className="text-[9px] bg-red-900/50 text-red-200 px-2 py-0.5 rounded border border-red-500/30 hover:bg-red-500 hover:text-white transition-colors uppercase tracking-wider"
+                                    className="text-[9px] bg-red-900/50 text-red-200 px-2 py-0.5 rounded border border-red-500/30 hover:bg-red-500 hover:text-white transition-colors uppercase tracking-wider ml-2"
                                 >
-                                    Brake
+                                    BRAKE
                                 </button>
                             </div>
-                            <input
-                                type="range"
-                                min="0.5"
-                                max="1.5"
-                                step="0.01"
-                                defaultValue="1"
-                                onChange={handleSpeedChange}
-                                className={`w-full h-1 bg-gray-700 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:${color === 'blue' ? 'bg-blue-400' : 'bg-purple-400'} [&::-webkit-slider-thumb]:rounded-sm`}
-                            />
+
+                            <div className="relative h-6 flex items-center">
+                                {/* Center Line Marker */}
+                                <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/20 -translate-x-1/2 z-0"></div>
+
+                                {/* Range Slider */}
+                                <input
+                                    type="range"
+                                    min="0.5"
+                                    max="1.5"
+                                    step="0.01"
+                                    value={speed}
+                                    onChange={handleSpeedChange}
+                                    className={`relative z-10 w-full h-1 bg-gray-700 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:${color === 'blue' ? 'bg-blue-400' : 'bg-purple-400'} [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:cursor-col-resize [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/50 [&::-webkit-slider-thumb]:shadow-[0_0_5px_rgba(0,0,0,0.5)]`}
+                                />
+
+                                {/* Visual Pointer/Tick on Thumb? 
+                                    CSS slider pseudo-elements are hard to style with extra divs inside. 
+                                    But the thumb itself is now a recognizable rectangle "pointer".
+                                */}
+                            </div>
                         </div>
 
                         {/* LOOP CONTROL */}
@@ -273,6 +373,8 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
                                     <button
                                         key={i}
                                         onClick={() => handleSamplerClick(i)}
+                                        onContextMenu={(e) => handleSamplerContextMenu(e, i)}
+                                        title={sampleLoaded[i] ? "Left-click to Play, Right-click to Unload" : "Click to load sample"}
                                         className={`h-10 text-[10px] font-bold border rounded transition-all active:scale-95
                                             ${sampleLoaded[i]
                                                 ? (color === 'blue' ? 'bg-blue-500/20 border-blue-500 text-blue-200 hover:bg-blue-500/40' : 'bg-purple-500/20 border-purple-500 text-purple-200 hover:bg-purple-500/40')
@@ -326,9 +428,69 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
                         </div>
                     </div>
 
-                    {/* FX Section */}
+
+                    {/* ISOLATOR EQ (3-BAND) */}
+                    <div className="space-y-4 border-t border-white/5 pt-6 mt-4">
+                        <div className="text-[10px] font-bold text-gray-500 text-center tracking-widest">ISOLATOR</div>
+                        <div className="flex flex-row justify-between items-end h-32 gap-2 px-2">
+                            {/* LOW, MID, HIGH */}
+                            {['low', 'mid', 'high'].map((band) => {
+                                const val = isolator[band as 'low' | 'mid' | 'high'];
+                                const isKilled = val <= 0.01;
+                                return (
+                                    <div key={band} className="flex flex-col items-center justify-end h-full gap-2 flex-1 relative group">
+                                        {/* Kill Indicator */}
+                                        <div className={`text-[8px] font-black uppercase tracking-wider transition-colors ${isKilled ? 'text-red-500 animate-pulse' : 'text-gray-600'}`}>
+                                            {isKilled ? 'KILL' : band.toUpperCase()}
+                                        </div>
+
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1"
+                                            step="0.01"
+                                            value={val}
+                                            onChange={(e) => handleIsolatorChange(band as 'low' | 'mid' | 'high', parseFloat(e.target.value))}
+                                            style={{ WebkitAppearance: 'slider-vertical' }}
+                                            className={`flex-1 min-h-0 w-full bg-transparent appearance-none cursor-pointer 
+                                                [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-[0_0_5px_rgba(0,0,0,0.5)]
+                                                ${band === 'low' ? '[&::-webkit-slider-thumb]:bg-red-400' : ''}
+                                                ${band === 'mid' ? '[&::-webkit-slider-thumb]:bg-yellow-400' : ''}
+                                                ${band === 'high' ? '[&::-webkit-slider-thumb]:bg-cyan-400' : ''}
+                                            `}
+                                            onDoubleClick={() => handleIsolatorChange(band as 'low' | 'mid' | 'high', 0.5)}
+                                        />
+
+                                        {/* Center Detent visual */}
+                                        <div className="absolute top-1/2 w-full h-[1px] bg-white/10 pointer-events-none -z-10"></div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* FX Section + GATE */}
                     <div className="space-y-4">
-                        <div className="text-[10px] font-bold text-neon-blue text-center tracking-widest border-b border-white/5 pb-1">FX</div>
+                        <div className="text-[10px] font-bold text-neon-blue text-center tracking-widest border-b border-white/5 pb-1">FX & GATE</div>
+
+                        {/* New Gate Control (only visible/enabled for external? No, helpful for noisy files too) */}
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="flex w-full justify-between text-[9px] uppercase text-gray-400 font-mono">
+                                <span>Noise Gate</span>
+                                <span className={gateThreshold > -50 ? 'text-white' : 'text-gray-600'}>{gateThreshold > -49 ? `${gateThreshold}dB` : 'OFF'}</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="-60"
+                                max="-10"
+                                step="1"
+                                value={gateThreshold}
+                                onChange={(e) => handleGateChange(parseFloat(e.target.value))}
+                                className={`w-full h-1 bg-gray-700 rounded appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full 
+                                    ${Number(gateThreshold) > -55 ? ' [&::-webkit-slider-thumb]:bg-red-400' : ' [&::-webkit-slider-thumb]:bg-gray-500'}`}
+                            />
+                        </div>
+
                         <div className="flex flex-col items-center gap-1">
                             <div className="text-[9px] uppercase text-gray-400 font-mono">DLY</div>
                             <input
@@ -359,6 +521,24 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color }) => {
 
             {/* Bottom Controls */}
             <div className="mt-6 pt-4 border-t border-white/5 flex flex-col gap-4 relative z-10">
+
+                {/* SEEK BAR */}
+                {inputType === 'file' && duration > 0 && (
+                    <div className="w-full flex items-center gap-3">
+                        <span className="text-[10px] font-mono text-gray-400 w-8">{formatTime(currentTime)}</span>
+                        <input
+                            type="range"
+                            min="0"
+                            max={duration}
+                            step="0.1"
+                            value={currentTime}
+                            onChange={handleSeek}
+                            className={`flex-1 h-1 bg-gray-700 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:scale-150 transition-all`}
+                        />
+                        <span className="text-[10px] font-mono text-gray-400 w-8 text-right">{formatTime(duration)}</span>
+                    </div>
+                )}
+
                 <div className="w-full bg-[#111] h-10 rounded-md border border-white/10 flex items-center px-3 relative overflow-hidden shadow-inner">
                     <div className={`text-xs font-mono ${accentColor} truncate z-10 w-full text-center`}>{trackName}</div>
                     {/* Spectrum bg visual (fake) */}

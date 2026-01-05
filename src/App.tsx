@@ -6,12 +6,31 @@ import DeckControls from './components/DeckControls';
 import Mixer from './components/Mixer';
 import AnimatedBackground from './components/AnimatedBackground';
 import { AudioRouter } from './components/AudioRouter';
-
 import { useAudioRouter } from './hooks/useAudioRouter';
+import { useMusicQueue } from './hooks/useMusicQueue';
+import QueuePanel from './components/QueuePanel';
+import TutorialModal from './components/TutorialModal';
 
 const App: React.FC = () => {
   const [started, setStarted] = useState(false);
   const [showRouter, setShowRouter] = useState(false);
+  const [showQueue, setShowQueue] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  // Queue Hook
+  const { queue, addToQueue, removeFromQueue } = useMusicQueue();
+
+  // External Load Triggers
+  const [externalLoadA, setExternalLoadA] = useState<{ file: File; ts: number } | null>(null);
+  const [externalLoadB, setExternalLoadB] = useState<{ file: File; ts: number } | null>(null);
+
+  const handleLoadFromQueue = (file: File, deckId: 'A' | 'B') => {
+    if (deckId === 'A') {
+      setExternalLoadA({ file, ts: Date.now() });
+    } else {
+      setExternalLoadB({ file, ts: Date.now() });
+    }
+  };
 
   // Use state to persist and trigger renders for audio instances
   const [deckA] = useState(() => new Deck());
@@ -90,8 +109,6 @@ const App: React.FC = () => {
     setStarted(true);
   };
 
-  // ... (render logic) ...
-
   // Audio Router Overlay Render
   const renderRouter = () => (
     <div className="absolute top-20 right-6 z-50 w-full max-w-md animate-fade-in-up">
@@ -114,14 +131,13 @@ const App: React.FC = () => {
   );
 
   if (!started) {
-    // ... (start screen) ...
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white relative overflow-hidden">
         <AnimatedBackground />
 
         <div className="z-10 text-center p-12 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl animate-fade-in-up">
-          <h1 className="text-6xl font-bold mb-8 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 drop-shadow-lg">
-            FLUX DJ
+          <h1 className="text-6xl font-black mb-8 tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 drop-shadow-lg">
+            BLANCDJ
           </h1>
           <p className="text-gray-400 mb-8 font-light tracking-widest text-sm uppercase">Professional Web Audio Interface</p>
 
@@ -142,15 +158,12 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen text-white flex flex-col font-sans relative">
+    <div className="min-h-screen text-white flex flex-col font-sans relative overflow-hidden">
       <AnimatedBackground />
 
       <header className="flex-none p-6 flex justify-between items-center z-10 border-b border-white/5 bg-black/20 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-neon-blue to-neon-purple animate-pulse-slow"></div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
-            FLUX <span className="font-light text-gray-400">DJ</span>
-          </h1>
+        <div className="flex items-center gap-4">
+          <img src="/logo.png" alt="Flux DJ Logo" className="h-10 w-auto object-contain" />
         </div>
         <div className="flex items-center gap-4">
           <div className="text-xs font-mono text-gray-500 border border-white/10 px-2 py-1 rounded-sm bg-black/20">
@@ -158,7 +171,6 @@ const App: React.FC = () => {
           </div>
           {started && (
             <>
-              {/* Test Tone Debug */}
               <button
                 onClick={() => {
                   const ctx = AudioContextManager.getInstance().getContext();
@@ -177,7 +189,6 @@ const App: React.FC = () => {
                 Test Beep
               </button>
 
-              {/* Local Mute Toggle */}
               <button
                 onClick={() => setLocalMuted(!localMuted)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${localMuted
@@ -195,6 +206,21 @@ const App: React.FC = () => {
               >
                 Router
               </button>
+
+              <button
+                onClick={() => setShowTutorial(true)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-gray-300 rounded-lg text-sm font-medium transition border border-white/5"
+              >
+                Tutorial
+              </button>
+
+              <button
+                onClick={() => setShowQueue(!showQueue)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${showQueue ? 'bg-zinc-700 text-white' : 'bg-zinc-800 text-gray-400 hover:bg-zinc-700'
+                  }`}
+              >
+                Queue
+              </button>
             </>
           )}
           <div className="text-xs font-mono text-gray-500 border border-white/10 px-3 py-1 rounded-full bg-white/5">
@@ -207,39 +233,50 @@ const App: React.FC = () => {
       {showRouter && renderRouter()}
 
       {/* Main Workspace */}
-      <main className="flex-grow flex flex-col lg:flex-row items-center justify-center gap-6 p-6 lg:p-12 relative z-10">
+      <div className="flex-grow flex relative overflow-hidden">
+        <main className={`flex-1 flex flex-col lg:flex-row items-center justify-center gap-6 p-6 lg:p-12 relative z-10 transition-all duration-300 ${showQueue ? 'mr-80' : ''}`}>
 
-        {/* DECK A */}
-        {deckA && (
-          <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
-            <DeckControls deck={deckA} title="DECK A" color="blue" />
-          </div>
-        )}
-
-        {/* MIXER */}
-        {crossfader && deckA && deckB && (
-          <div className="flex-none w-full lg:w-auto lg:min-w-[280px] z-30 flex items-center justify-center pointer-events-none lg:pointer-events-auto my-4 lg:my-0">
-            {/* 
-                Added pointer-events-none/auto wrapper trick just in case, but really we just need space. 
-                Actually, simpler: Just give it space. 
-             */}
-            <div className="w-full max-w-sm pointer-events-auto p-6 bg-black/60 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] h-auto min-h-[500px] flex flex-col justify-between">
-              <Mixer crossfader={crossfader} deckA={deckA} deckB={deckB} />
+          {/* DECK A */}
+          {deckA && (
+            <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
+              <DeckControls deck={deckA} title="DECK A" color="blue" externalLoad={externalLoadA} />
             </div>
-          </div>
-        )}
+          )}
 
-        {/* DECK B */}
-        {deckB && (
-          <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
-            <DeckControls deck={deckB} title="DECK B" color="purple" />
-          </div>
-        )}
-      </main>
+          {/* MIXER */}
+          {crossfader && deckA && deckB && (
+            <div className="flex-none w-full lg:w-auto lg:min-w-[280px] z-30 flex items-center justify-center pointer-events-none lg:pointer-events-auto my-4 lg:my-0">
+              <div className="w-full max-w-sm pointer-events-auto p-6 bg-black/60 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] h-auto min-h-[500px] flex flex-col justify-between">
+                <Mixer crossfader={crossfader} deckA={deckA} deckB={deckB} />
+              </div>
+            </div>
+          )}
+
+          {/* DECK B */}
+          {deckB && (
+            <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
+              <DeckControls deck={deckB} title="DECK B" color="purple" externalLoad={externalLoadB} />
+            </div>
+          )}
+        </main>
+
+        {/* Queue Panel Sidebar - Fixed on Right */}
+        <div className={`fixed inset-y-0 right-0 z-40 w-80 transform transition-transform duration-300 ease-in-out ${showQueue ? 'translate-x-0' : 'translate-x-full'} pt-20 shadow-2xl bg-zinc-900 border-l border-white/10`}>
+          <QueuePanel
+            queue={queue}
+            addToQueue={addToQueue}
+            removeFromQueue={removeFromQueue}
+            onLoadToDeck={handleLoadFromQueue}
+            onClose={() => setShowQueue(false)}
+          />
+        </div>
+      </div>
 
       <footer className="flex-none py-4 text-center text-gray-600 text-xs font-mono z-10 border-t border-white/5 bg-black/40 backdrop-blur-sm">
         Web Audio API • High Fidelity Audio Engine
       </footer>
+
+      {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
     </div>
   );
 };

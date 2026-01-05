@@ -1,19 +1,24 @@
 import { AudioContextManager } from './AudioContextManager';
 import { EQ } from './EQ';
+import { ThreeBandEQ } from './ThreeBandEQ';
 import { Reverb } from './Reverb';
 import { Delay } from './Delay';
+import { NoiseGate } from './NoiseGate';
 
 export class Deck {
     private context: AudioContext;
     private gainNode: GainNode;
     private analyserNode: AnalyserNode;
     private eq: EQ;
+    public threeBandEQ: ThreeBandEQ;
     public reverb: Reverb;
     public delay: Delay;
+    public noiseGate: NoiseGate;
     private sourceNode: AudioBufferSourceNode | MediaStreamAudioSourceNode | null = null;
     private buffer: AudioBuffer | null = null;
     private pausedAt = 0;
     private startedAt = 0;
+    private isPlaying = false;
 
     // Public output for the mixer to connect to
     public outputNode: GainNode;
@@ -24,16 +29,19 @@ export class Deck {
         this.analyserNode = this.context.createAnalyser();
         this.outputNode = this.context.createGain();
         this.eq = new EQ(this.context);
+        this.threeBandEQ = new ThreeBandEQ(this.context);
         this.reverb = new Reverb(this.context);
         this.delay = new Delay(this.context);
+        this.noiseGate = new NoiseGate(this.context);
 
         this.setupAudioChain();
     }
 
     private setupAudioChain() {
-        // Chain: EQ Output -> Delay -> Reverb -> Gain -> Analyser -> OutputNode
-        // Source will connect to EQ Input
-        this.eq.output.connect(this.delay.input);
+        // Chain: EQ Output -> ThreeBandEQ -> NoiseGate -> Delay -> Reverb -> Gain -> Analyser -> OutputNode
+        this.eq.output.connect(this.threeBandEQ.input);
+        this.threeBandEQ.output.connect(this.noiseGate.input);
+        this.noiseGate.output.connect(this.delay.input);
         this.delay.output.connect(this.reverb.input);
         this.reverb.output.connect(this.gainNode);
 
@@ -50,6 +58,9 @@ export class Deck {
             this.buffer = await this.context.decodeAudioData(fileArrayBuffer);
             this.pausedAt = 0; // Reset on new load
             this.startedAt = 0;
+            // Disable noise gate for files by default or keep previous setting? 
+            // Usually noise gate is for live input.
+            // keeping as is, user can toggle.
         } catch (error) {
             console.error('Error decoding audio data:', error);
             throw error;
@@ -67,9 +78,18 @@ export class Deck {
     }
 
     public play() {
+        if (!this.buffer && !(this.sourceNode instanceof MediaStreamAudioSourceNode)) return;
+
+        // If it's a stream, it's already connected in loadStream, we just need to verify logic?
+        // Actually loadStream connects it. For stream, 'play' mostly just means internal state tracking.
+        if (this.sourceNode instanceof MediaStreamAudioSourceNode) {
+            this.isPlaying = true;
+            return;
+        }
+
         if (!this.buffer) return;
 
-        // Stop existing source if any (shouldn't happen if logic is clean, but safe)
+        // Stop existing source if any
         this.stopSource();
 
         this.sourceNode = this.context.createBufferSource();
@@ -80,21 +100,44 @@ export class Deck {
 
         this.sourceNode.loop = false;
 
+        // Restore loop points if set
+        if (this.loopStartPoint !== null && this.loopEndPoint !== null) {
+            this.sourceNode.loopStart = this.loopStartPoint;
+            this.sourceNode.loopEnd = this.loopEndPoint;
+            this.sourceNode.loop = true;
+        }
+
+        // Handle playback rate
+        this.sourceNode.playbackRate.value = this.playbackRate;
+
         // Start from paused position
         this.sourceNode.start(0, this.pausedAt);
 
         // Record relative start time
-        this.startedAt = this.context.currentTime - this.pausedAt;
+        this.startedAt = this.context.currentTime - (this.pausedAt / this.playbackRate); // Correct for rate
+        this.isPlaying = true;
     }
 
     public pause() {
+        if (this.sourceNode instanceof MediaStreamAudioSourceNode) {
+            this.isPlaying = false;
+            // For stream we might want to disconnect or mute?
+            // current logic in loadStream connects it strictly. 
+            // In DeckControls we call stop() for external which disconnects.
+            return;
+        }
+
         if (this.sourceNode) {
             // Calculate elapsed time
-            const elapsed = this.context.currentTime - this.startedAt;
+            // Account for playback rate in time calculation? 
+            // Simple approach: AudioContext time flows linearly.
+            // If rate was 1.0 mostly:
+            const elapsed = (this.context.currentTime - this.startedAt) * this.playbackRate;
             this.pausedAt = elapsed;
 
             this.stopSource();
         }
+        this.isPlaying = false;
     }
 
     // Completely stop and reset to 0
@@ -102,6 +145,7 @@ export class Deck {
         this.stopSource();
         this.pausedAt = 0;
         this.startedAt = 0;
+        this.isPlaying = false;
     }
 
     private stopSource() {
@@ -132,20 +176,78 @@ export class Deck {
         return this.eq.getFrequencies();
     }
 
+    public setIsolatorGain(band: 'low' | 'mid' | 'high', value: number) {
+        this.threeBandEQ.setGain(band, value);
+    }
+
     public getAnalyser(): AnalyserNode {
         return this.analyserNode;
     }
+
+    // --- SEEKING ---
+    public getDuration(): number {
+        return this.buffer ? this.buffer.duration : 0;
+    }
+
+    public getCurrentTime(): number {
+        if (!this.isPlaying) return this.pausedAt;
+
+        // Approximation for UI
+        if (this.sourceNode instanceof MediaStreamAudioSourceNode) return 0;
+
+        const now = this.context.currentTime;
+        // Correct calculation: startedAt is the context time when track started from 0
+        // But we update startedAt on play() to handle offset
+        // startedAt = now - (pausedAt / rate)
+        // so current "track time" = (now - startedAt) * rate
+        return (now - this.startedAt) * this.playbackRate;
+    }
+
+    public seek(time: number) {
+        if (!this.buffer) return;
+
+        // Clamp time
+        time = Math.max(0, Math.min(time, this.buffer.duration));
+
+        const wasPlaying = this.isPlaying;
+
+        // If playing, we need to stop and restart at new time
+        if (this.isPlaying) {
+            this.stopSource();
+        }
+
+        this.pausedAt = time;
+
+        if (wasPlaying) {
+            this.play();
+        }
+    }
+
 
     // --- VINYL SPEED / PITCH ---
     private playbackRate = 1.0;
 
     public setSpeed(rate: number) {
-        this.playbackRate = rate;
-        if (this.sourceNode instanceof AudioBufferSourceNode) {
-            this.sourceNode.playbackRate.setValueAtTime(
-                rate,
-                this.context.currentTime
-            );
+        if (this.isPlaying) {
+            const now = this.context.currentTime;
+            // Configured to ensure seek/time doesn't jump
+            const currentTrackTime = (now - this.startedAt) * this.playbackRate;
+
+            this.playbackRate = rate;
+
+            // Recalculate startedAt so that (now - startedAt) * newRate = currentTrackTime
+            // startedAt = now - (currentTrackTime / newRate)
+            this.startedAt = now - (currentTrackTime / rate);
+
+            if (this.sourceNode instanceof AudioBufferSourceNode) {
+                this.sourceNode.playbackRate.setValueAtTime(rate, now);
+            }
+        } else {
+            // If not playing, just update rate. Current time (pausedAt) stays same.
+            this.playbackRate = rate;
+            // What if we are paused? pause() sets pausedAt. 
+            // play() uses pausedAt. startedAt is re-calced on play().
+            // So we don't need to adjust anything else.
         }
     }
 
@@ -174,22 +276,17 @@ export class Deck {
     public setLoopIn() {
         if (!this.sourceNode || !(this.sourceNode instanceof AudioBufferSourceNode)) return;
 
-        // Simple approximation: time since start + initial offset
-        const now = this.context.currentTime;
-        // bufferTime is approximately:
-        const bufferTime = this.pausedAt + (now - this.startedAt);
-
-        this.loopStartPoint = bufferTime;
+        const currentTime = this.getCurrentTime();
+        this.loopStartPoint = currentTime;
         console.log('Loop In set at:', this.loopStartPoint);
     }
 
     public setLoopOut() {
         if (!this.sourceNode || !(this.sourceNode instanceof AudioBufferSourceNode)) return;
-        const now = this.context.currentTime;
-        const bufferTime = this.pausedAt + (now - this.startedAt);
+        const currentTime = this.getCurrentTime();
 
-        if (this.loopStartPoint !== null && bufferTime > this.loopStartPoint) {
-            this.loopEndPoint = bufferTime;
+        if (this.loopStartPoint !== null && currentTime > this.loopStartPoint) {
+            this.loopEndPoint = currentTime;
             this.engageLoop();
             console.log('Loop Out set at:', this.loopEndPoint);
         }
@@ -227,6 +324,11 @@ export class Deck {
         } catch (e) {
             console.error('Failed to load sample', e);
         }
+    }
+
+    public unloadSample(slotIndex: number) {
+        if (slotIndex < 0 || slotIndex > 3) return;
+        this.samples[slotIndex] = null;
     }
 
     public playSample(slotIndex: number) {
