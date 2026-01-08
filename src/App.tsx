@@ -163,7 +163,7 @@ const App: React.FC = () => {
 
       <header className="flex-none p-6 flex justify-between items-center z-10 border-b border-white/5 bg-black/20 backdrop-blur-md">
         <div className="flex items-center gap-4">
-          <img src="/logo.png" alt="Flux DJ Logo" className="h-10 w-auto object-contain" />
+          <img src="logo.png" alt="Flux DJ Logo" className="h-10 w-auto object-contain" />
         </div>
         <div className="flex items-center gap-4">
           <div className="text-xs font-mono text-gray-500 border border-white/10 px-2 py-1 rounded-sm bg-black/20">

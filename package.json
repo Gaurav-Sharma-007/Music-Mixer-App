@@ -19,6 +19,7 @@
   "build": {
     "appId": "com.blancdj.app",
     "productName": "BLANCDJ",
+    "copyright": "Copyright © 2026 BLANCDJ",
     "directories": {
       "output": "dist-electron"
     },
@@ -29,6 +30,12 @@
     "win": {
       "target": "nsis",
       "icon": "public/logo.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "runAfterFinish": true
     }
   },
   "dependencies": {

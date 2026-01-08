@@ -315,6 +315,8 @@ export class Deck {
     // --- SAMPLER ---
     // 4 Slots for samples
     private samples: (AudioBuffer | null)[] = [null, null, null, null];
+    // Track active source nodes for each sample slot to allow stopping them on unload
+    private activeSampleNodes: Set<AudioBufferSourceNode>[] = [new Set(), new Set(), new Set(), new Set()];
 
     public async loadSample(slotIndex: number, fileArrayBuffer: ArrayBuffer) {
         if (slotIndex < 0 || slotIndex > 3) return;
@@ -328,6 +330,18 @@ export class Deck {
 
     public unloadSample(slotIndex: number) {
         if (slotIndex < 0 || slotIndex > 3) return;
+
+        // Stop all currently playing instances of this sample
+        this.activeSampleNodes[slotIndex].forEach(node => {
+            try {
+                node.stop();
+                node.disconnect();
+            } catch (e) {
+                // Ignore errors if already stopped
+            }
+        });
+        this.activeSampleNodes[slotIndex].clear();
+
         this.samples[slotIndex] = null;
     }
 
@@ -339,6 +353,13 @@ export class Deck {
         source.buffer = buffer;
         // Mix into this.outputNode so it goes to the Mixer.
         source.connect(this.outputNode);
+
+        // Track this node
+        this.activeSampleNodes[slotIndex].add(source);
+        source.onended = () => {
+            this.activeSampleNodes[slotIndex].delete(source);
+        };
+
         source.start(0);
     }
 }
