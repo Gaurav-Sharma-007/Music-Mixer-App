@@ -313,48 +313,85 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
 
                     <div className="mt-6 w-full max-w-[200px] space-y-4">
                         {/* SPEED CONTROL */}
+                        {/* SPEED CONTROL */}
                         <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <div className="text-[10px] font-bold text-gray-500 tracking-widest">TEMPO</div>
-                                <div className={`text-[10px] font-mono font-bold ${accentColor} bg-black/40 px-2 py-0.5 rounded border border-white/5`}>
-                                    {speed.toFixed(2)}x
+                            <div className="flex justify-between items-center mb-2 gap-2">
+                                <div className="text-[10px] font-bold text-gray-500 tracking-widest shrink-0">TEMPO</div>
+
+                                {/* Manual Input */}
+                                <div className="relative group">
+                                    <input
+                                        type="number"
+                                        min="0.5"
+                                        max="1.5"
+                                        step="0.01"
+                                        value={speed}
+                                        onChange={(e) => {
+                                            const val = parseFloat(e.target.value);
+                                            if (!isNaN(val)) {
+                                                setSpeed(val);
+                                                deck.setSpeed(val);
+                                            }
+                                        }}
+                                        className={`w-16 text-[10px] font-mono font-bold ${accentColor} bg-black/40 px-2 py-0.5 rounded border border-white/10 outline-none focus:border-${color === 'blue' ? 'neon-blue' : 'neon-purple'} text-center transition-all`}
+                                    />
+                                    <div className="absolute top-0 right-1 bottom-0 flex items-center pointer-events-none">
+                                        <span className="text-[8px] text-gray-600">x</span>
+                                    </div>
                                 </div>
-                                <button
-                                    onClick={() => {
-                                        setSpeed(1.0);
-                                        deck.setSpeed(1.0);
-                                    }}
-                                    className="text-[9px] text-gray-400 hover:text-white transition-colors uppercase tracking-wider"
-                                >
-                                    RESET
-                                </button>
-                                <button
-                                    onClick={handleBrake}
-                                    className="text-[9px] bg-red-900/50 text-red-200 px-2 py-0.5 rounded border border-red-500/30 hover:bg-red-500 hover:text-white transition-colors uppercase tracking-wider ml-2"
-                                >
-                                    BRAKE
-                                </button>
+
+                                <div className="flex gap-1 ml-auto">
+                                    <button
+                                        onClick={() => {
+                                            setSpeed(1.0);
+                                            deck.setSpeed(1.0);
+                                        }}
+                                        className="text-[9px] px-2 py-0.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-gray-400 hover:text-white transition-colors uppercase tracking-wider"
+                                    >
+                                        RESET
+                                    </button>
+                                    <button
+                                        onClick={handleBrake}
+                                        className="text-[9px] bg-red-900/20 text-red-300 px-2 py-0.5 rounded border border-red-500/20 hover:bg-red-500 hover:text-white transition-colors uppercase tracking-wider"
+                                    >
+                                        BRAKE
+                                    </button>
+                                </div>
                             </div>
 
-                            <div className="relative h-6 flex items-center">
-                                {/* Center Line Marker */}
-                                <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/20 -translate-x-1/2 z-0"></div>
+                            <div className="relative h-8 flex items-center group">
+                                {/* Glow Background behind slider */}
+                                <div className={`absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-${color === 'blue' ? 'blue-500/30' : 'purple-500/30'} to-transparent opacity-0 group-hover:opacity-100 transition-opacity blur-sm`}></div>
 
-                                {/* Range Slider */}
+                                {/* Track */}
+                                <div className="absolute left-0 right-0 h-1 bg-gray-800 rounded-full overflow-hidden">
+                                    {/* Center Marker Inside Track */}
+                                    <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/50 -translate-x-1/2"></div>
+                                </div>
+
+
+                                {/* Range Slider - Transparent Track, Visible Thumb */}
                                 <input
                                     type="range"
                                     min="0.5"
                                     max="1.5"
-                                    step="0.01"
+                                    step="0.001"
                                     value={speed}
                                     onChange={handleSpeedChange}
-                                    className={`relative z-10 w-full h-1 bg-gray-700 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:${color === 'blue' ? 'bg-blue-400' : 'bg-purple-400'} [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:cursor-col-resize [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/50 [&::-webkit-slider-thumb]:shadow-[0_0_5px_rgba(0,0,0,0.5)]`}
+                                    className={`relative z-10 w-full h-8 bg-transparent appearance-none cursor-pointer 
+                                        [&::-webkit-slider-thumb]:appearance-none 
+                                        [&::-webkit-slider-thumb]:w-4 
+                                        [&::-webkit-slider-thumb]:h-4 
+                                        [&::-webkit-slider-thumb]:${color === 'blue' ? 'bg-cyan-400' : 'bg-fuchsia-400'} 
+                                        [&::-webkit-slider-thumb]:rounded-full 
+                                        [&::-webkit-slider-thumb]:border-2 
+                                        [&::-webkit-slider-thumb]:border-white 
+                                        [&::-webkit-slider-thumb]:shadow-[0_0_15px_currentColor]
+                                        [&::-webkit-slider-thumb]:transition-transform
+                                        hover:[&::-webkit-slider-thumb]:scale-125
+                                        active:[&::-webkit-slider-thumb]:scale-110
+                                    `}
                                 />
-
-                                {/* Visual Pointer/Tick on Thumb? 
-                                    CSS slider pseudo-elements are hard to style with extra divs inside. 
-                                    But the thumb itself is now a recognizable rectangle "pointer".
-                                */}
                             </div>
                         </div>
 
