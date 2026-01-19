@@ -35,7 +35,7 @@ body {
   /* Center vertically */
   min-width: 320px;
   min-height: 100vh;
-  background-color: black;
+  background-color: var(--color-premium-black);
   color: white;
 }
 

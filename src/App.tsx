@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import logo from './assets/logo.png';
+import { THEMES, applyTheme, type Theme } from './themes/themeConfig';
 import { Deck } from './audio/Deck';
 import { Crossfader } from './audio/Crossfader';
 import { AudioContextManager } from './audio/AudioContextManager';
@@ -16,6 +18,12 @@ const App: React.FC = () => {
   const [showRouter, setShowRouter] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<Theme>(THEMES[0]);
+
+  // Apply Theme on Change
+  useEffect(() => {
+    applyTheme(currentTheme);
+  }, [currentTheme]);
 
   // Queue Hook
   const { queue, addToQueue, removeFromQueue } = useMusicQueue();
@@ -163,7 +171,7 @@ const App: React.FC = () => {
 
       <header className="flex-none p-6 flex justify-between items-center z-10 border-b border-white/5 bg-black/20 backdrop-blur-md">
         <div className="flex items-center gap-4">
-          <img src="logo.png" alt="Flux DJ Logo" className="h-10 w-auto object-contain" />
+          <img src={logo} alt="Flux DJ Logo" className="h-10 w-auto object-contain" />
         </div>
         <div className="flex items-center gap-4">
           <div className="text-xs font-mono text-gray-500 border border-white/10 px-2 py-1 rounded-sm bg-black/20">
@@ -226,6 +234,20 @@ const App: React.FC = () => {
           <div className="text-xs font-mono text-gray-500 border border-white/10 px-3 py-1 rounded-full bg-white/5">
             READY TO MIX
           </div>
+
+          {/* Theme Selector */}
+          <select
+            value={currentTheme.name}
+            onChange={(e) => {
+              const selected = THEMES.find(t => t.name === e.target.value);
+              if (selected) setCurrentTheme(selected);
+            }}
+            className="bg-black/40 text-xs text-gray-400 border border-white/10 rounded px-2 py-1 outline-none hover:text-white transition-colors cursor-pointer"
+          >
+            {THEMES.map(t => (
+              <option key={t.name} value={t.name} className="bg-black text-white">{t.label}</option>
+            ))}
+          </select>
         </div>
       </header>
 

@@ -24,6 +24,17 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
     const [sampleLoaded, setSampleLoaded] = useState([false, false, false, false]);
     const [showSourceSelector, setShowSourceSelector] = useState(false);
 
+    // YouTube Integration States
+    const [showYoutubeInput, setShowYoutubeInput] = useState(false);
+    const [youtubeUrl, setYoutubeUrl] = useState('');
+    const [isDownloading, setIsDownloading] = useState(false);
+
+    // Search States
+    const [apiKey, setApiKey] = useState(localStorage.getItem('yt_api_key') || '');
+    const [apiKeyInput, setApiKeyInput] = useState('');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+
     const accentColor = color === 'blue' ? 'text-neon-blue' : 'text-neon-purple';
     const borderColor = color === 'blue' ? 'border-neon-blue/30' : 'border-neon-purple/30';
 
@@ -32,7 +43,35 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         if (externalLoad) {
             handleFileSelect(externalLoad.file);
         }
-    }, [externalLoad]); // Depend only on externalLoad object reference changing
+    }, [externalLoad]);
+
+    const handleYoutubeSearch = async () => {
+        if (!youtubeUrl) return;
+
+        // If it looks like a URL, just load it
+        if (youtubeUrl.includes('http') || youtubeUrl.includes('youtube.com') || youtubeUrl.includes('youtu.be')) {
+            handleYoutubeSubmit(youtubeUrl);
+            return;
+        }
+
+        if (!apiKey) {
+            alert("No API Key found. Please enter a YouTube Data API Key.");
+            return;
+        }
+
+        setIsDownloading(true); // Re-use loading state for UI feedback
+        try {
+            if (window.electronAPI && window.electronAPI.searchYoutube) {
+                const results = await window.electronAPI.searchYoutube(youtubeUrl, apiKey);
+                setSearchResults(results);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Search failed. Check API Key or Quota.");
+        } finally {
+            setIsDownloading(false);
+        }
+    };
 
     const [gateThreshold, setGateThreshold] = useState(-50);
     const [currentTime, setCurrentTime] = useState(0);
@@ -66,9 +105,13 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
             const arrayBuffer = await file.arrayBuffer();
             await deck.load(arrayBuffer);
             setTrackName(file.name);
-            setDuration(deck.getDuration()); // Set initial duration
+            setDuration(deck.getDuration());
             setIsLoaded(true);
             setInputType('file');
+
+            // Auto-play on load
+            deck.play();
+            setIsPlaying(true);
         } catch (error) {
             console.error('Failed to load file', error);
             setTrackName('Error loading file');
@@ -76,10 +119,6 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         }
     };
 
-    const handleExternalInputClick = () => {
-        // Show our custom selector
-        setShowSourceSelector(true);
-    };
 
     const handleSourceSelected = async (sourceId: string) => {
         setShowSourceSelector(false);
@@ -90,7 +129,6 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                         chromeMediaSource: 'desktop',
                         chromeMediaSourceId: sourceId
                     },
-                    // Disable all auto-processing for high-fidelity music playback
                     echoCancellation: false,
                     autoGainControl: false,
                     noiseSuppression: false,
@@ -101,21 +139,17 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                     mandatory: {
                         chromeMediaSource: 'desktop',
                         chromeMediaSourceId: sourceId,
-                        // Low framerate is fine as we stop it immediately, 
-                        // but setting it helps performance init
                         maxFrameRate: 1
                     }
                 }
             } as any);
 
-            // We only need audio
             const audioTrack = stream.getAudioTracks()[0];
             if (!audioTrack) {
                 alert("No audio track found. Ensure you selected a source with audio.");
                 return;
             }
 
-            // Stop video immediately to save resources
             stream.getVideoTracks().forEach(t => t.stop());
 
             await deck.loadStream(new MediaStream([audioTrack]));
@@ -130,14 +164,63 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         }
     };
 
+    const handleYoutubeClick = () => {
+        setShowYoutubeInput(true);
+    };
+
+    const handleYoutubeSubmit = async (urlToLoad?: string) => {
+        const targetUrl = typeof urlToLoad === 'string' ? urlToLoad : youtubeUrl;
+        if (!targetUrl) return;
+
+        setIsDownloading(true);
+        try {
+            if (window.electronAPI) {
+                setTrackName('Downloading YouTube...');
+                const rawBuffer = await window.electronAPI.loadYoutube(targetUrl);
+
+                console.log("Received buffer from Main:", rawBuffer);
+
+                // Electron IPC sends Buffer as Uint8Array. 
+                // deck.load expects ArrayBuffer. 
+                // If rawBuffer is Uint8Array (which has .buffer), use that.
+                // We cast to any to avoid TS errors since we know runtime behavior differs from strict .d.ts
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const arrayBuffer = (rawBuffer as any).buffer ? (rawBuffer as any).buffer : rawBuffer;
+
+                if (arrayBuffer.byteLength === 0) {
+                    throw new Error("Received empty audio buffer");
+                }
+
+                await deck.load(arrayBuffer);
+                setTrackName('YouTube Track');
+                setDuration(deck.getDuration());
+                setIsLoaded(true);
+                setInputType('file');
+
+                deck.play();
+                setIsPlaying(true);
+
+                setShowYoutubeInput(false);
+                setYoutubeUrl(''); // Reset search bar
+                setSearchResults([]); // Reset results
+            } else {
+                alert("YouTube integration requires Electron App");
+            }
+        } catch (error) {
+            console.error("YouTube Load Failed", error);
+            setTrackName('Download Failed');
+            alert("Failed to load YouTube URL. Check console.");
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
     const togglePlay = () => {
         if (inputType === 'external') {
-            // For external, stop might mean mute or disconnect?
-            // For now, simpler to just let gain handle mute or deck.stop
             if (isPlaying) {
                 deck.stop();
                 setIsPlaying(false);
-                setIsLoaded(false); // Reset for external? Or just pause?
+                setIsLoaded(false);
             }
             return;
         }
@@ -189,10 +272,8 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         setFx(newFx);
         if (effect === 'delay') deck.delay.setMix(val);
         if (effect === 'reverb') deck.reverb.setMix(val);
-        if (effect === 'reverb') deck.reverb.setMix(val);
     };
 
-    // --- GATE CONTROL ---
     const handleGateChange = (val: number) => {
         setGateThreshold(val);
         deck.noiseGate.setThreshold(val);
@@ -210,15 +291,10 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         deck.setSpeed(val);
     };
 
-    // --- SEEK CONTROL ---
     const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
         const time = parseFloat(e.target.value);
         setCurrentTime(time);
         deck.seek(time);
-        if (!isPlaying && isLoaded) {
-            // Optional: Auto-play on seek or just move head? 
-            // Standard: just move head.
-        }
     };
 
     const formatTime = (t: number) => {
@@ -229,14 +305,11 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
 
     const handleBrake = () => {
         deck.brake();
-        // UI reset is handled by deck.brake() logic (it pauses eventually)
-        // We might want to set IsPlaying to false after a timeout to match deck state?
         setTimeout(() => setIsPlaying(false), 1000);
     };
 
     const handleSamplerClick = async (index: number) => {
         if (!sampleLoaded[index]) {
-            // Trigger file input
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'audio/*';
@@ -266,11 +339,119 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         }
     };
 
-
     const bands = ['60', '150', '400', '1K', '2.4K', '6K', '12K', '15K'];
 
     return (
         <div className={`p-6 rounded-3xl bg-zinc-900 border ${borderColor} shadow-2xl relative overflow-hidden transition-all duration-300 w-full`}>
+
+            {/* YouTube Input Modal */}
+            {showYoutubeInput && (
+                <div className="absolute inset-0 z-50 bg-black/95 flex items-center justify-center p-6 backdrop-blur-md">
+                    <div className="w-full max-w-sm flex flex-col gap-4 max-h-full">
+                        <h3 className={`text-sm font-bold ${accentColor} tracking-widest uppercase mb-2 flex justify-between items-center`}>
+                            <span>YouTube Search</span>
+                            {localStorage.getItem('yt_api_key') && (
+                                <button
+                                    onClick={() => {
+                                        localStorage.removeItem('yt_api_key');
+                                        setApiKey(''); // Force re-render/reset
+                                    }}
+                                    className="text-[10px] text-gray-500 hover:text-red-400"
+                                >
+                                    CLEAR KEY
+                                </button>
+                            )}
+                        </h3>
+
+                        {!apiKey ? (
+                            <div className="space-y-2">
+                                <p className="text-[10px] text-gray-400">Enter YouTube Data API v3 Key to enable search.</p>
+                                <input
+                                    type="text"
+                                    value={apiKeyInput}
+                                    onChange={e => setApiKeyInput(e.target.value)}
+                                    placeholder="Paste API Key..."
+                                    className="w-full bg-zinc-800 border border-white/10 rounded px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                                />
+                                <button
+                                    onClick={() => {
+                                        if (apiKeyInput) {
+                                            localStorage.setItem('yt_api_key', apiKeyInput);
+                                            setApiKey(apiKeyInput);
+                                        }
+                                    }}
+                                    className="w-full px-4 py-2 rounded text-xs font-bold bg-white text-black hover:bg-gray-200"
+                                >
+                                    SAVE KEY
+                                </button>
+                                <div className="text-center text-[10px] text-gray-500">- OR -</div>
+                                <input
+                                    type="text"
+                                    value={youtubeUrl}
+                                    onChange={e => setYoutubeUrl(e.target.value)}
+                                    placeholder="Paste Direct Video URL..."
+                                    className="w-full bg-zinc-800 border border-white/10 rounded px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                                />
+                                <button
+                                    onClick={() => handleYoutubeSubmit(youtubeUrl)}
+                                    disabled={isDownloading || !youtubeUrl}
+                                    className={`w-full px-4 py-2 rounded text-xs font-bold ${accentColor} border border-current hover:bg-white/10 ${isDownloading ? 'opacity-50' : ''}`}
+                                >
+                                    LOAD URL
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={youtubeUrl}
+                                        onChange={e => setYoutubeUrl(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleYoutubeSearch();
+                                        }}
+                                        placeholder="Search or Paste URL..."
+                                        className="w-full bg-zinc-800 border border-white/10 rounded px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                                        autoFocus
+                                    />
+                                    <button
+                                        onClick={handleYoutubeSearch}
+                                        disabled={isDownloading}
+                                        className={`px-4 py-1.5 rounded text-xs font-bold bg-white text-black hover:bg-gray-200 ${isDownloading ? 'opacity-50' : ''}`}
+                                    >
+                                        GO
+                                    </button>
+                                </div>
+
+                                {/* Results List */}
+                                <div className="flex-1 overflow-y-auto space-y-2 min-h-0 border-t border-white/5 pt-2 max-h-[200px] scrollbar-thin scrollbar-thumb-gray-700">
+                                    {searchResults.map((result) => (
+                                        <div
+                                            key={result.id}
+                                            onClick={() => handleYoutubeSubmit(`https://www.youtube.com/watch?v=${result.id}`)}
+                                            className="flex gap-3 p-2 hover:bg-white/10 rounded cursor-pointer group transition-colors"
+                                        >
+                                            <img src={result.thumbnail} alt="" className="w-12 h-9 object-cover rounded opacity-80 group-hover:opacity-100" />
+                                            <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                                <div className="text-xs text-white font-bold truncate">{result.title}</div>
+                                                <div className="text-[10px] text-gray-400 truncate">{result.channel}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {searchResults.length === 0 && youtubeUrl && !youtubeUrl.includes('http') && (
+                                        <div className="text-center text-[10px] text-gray-500 py-4">Press GO to search</div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        <div className="flex justify-end pt-2 border-t border-white/5">
+                            <button onClick={() => setShowYoutubeInput(false)} className="px-3 py-1.5 rounded text-xs text-gray-400 hover:text-white">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Top Info Bar */}
             <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
                 <h2 className={`text-xl font-black ${accentColor} tracking-widest uppercase`}>{title}</h2>
@@ -282,10 +463,10 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                         FILE
                     </button>
                     <button
-                        onClick={handleExternalInputClick}
-                        className={`px-3 py-1 rounded-full border ${inputType === 'external' ? 'bg-red-500/20 border-red-500/50 text-red-200' : 'border-white/10 text-gray-500 hover:text-white'}`}
+                        onClick={handleYoutubeClick}
+                        className={`px-3 py-1 rounded-full border border-red-500/30 text-red-400 hover:bg-red-500/20 hover:text-white transition-colors`}
                     >
-                        EXTERNAL
+                        YOUTUBE
                     </button>
                 </div>
             </div>
@@ -312,7 +493,6 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                     </div>
 
                     <div className="mt-6 w-full max-w-[200px] space-y-4">
-                        {/* SPEED CONTROL */}
                         {/* SPEED CONTROL */}
                         <div>
                             <div className="flex justify-between items-center mb-2 gap-2">
@@ -510,7 +690,6 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                     <div className="space-y-4">
                         <div className="text-[10px] font-bold text-neon-blue text-center tracking-widest border-b border-white/5 pb-1">FX & GATE</div>
 
-                        {/* New Gate Control (only visible/enabled for external? No, helpful for noisy files too) */}
                         <div className="flex flex-col items-center gap-1">
                             <div className="flex w-full justify-between text-[9px] uppercase text-gray-400 font-mono">
                                 <span>Noise Gate</span>

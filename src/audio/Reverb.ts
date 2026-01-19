@@ -51,13 +51,12 @@ export class Reverb {
     }
 
     public setMix(value: number) {
-        // Value 0 to 1
-        const wet = Math.max(0, Math.min(1, value));
-        // Simple linear crossfade for now, or maintain dry and add wet
-        // Usually Reverb allows full wet. 
-        // Let's do: Dry decreases as Wet increases to maintain volume?
-        // Or just Additive? Additive is safer for "Send" style, but for Insert style:
+        // Standard mix 0-1
+        const wet = Math.min(1, Math.max(0, value));
+
         this.wetGain.gain.value = wet;
-        this.dryGain.gain.value = 1 - (wet * 0.5); // Slight dry dip
+
+        // Simple linear ducking
+        this.dryGain.gain.value = 1 - (wet * 0.5);
     }
 }
