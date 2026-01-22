@@ -58,3 +58,216 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* Floating orb animations */
+@keyframes float-1 {
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  25% {
+    transform: translate(30px, -40px) scale(1.1);
+  }
+
+  50% {
+    transform: translate(-20px, -80px) scale(0.9);
+  }
+
+  75% {
+    transform: translate(-40px, -40px) scale(1.05);
+  }
+}
+
+@keyframes float-2 {
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(-50px, 30px) scale(1.15);
+  }
+
+  66% {
+    transform: translate(40px, -20px) scale(0.85);
+  }
+}
+
+@keyframes float-3 {
+
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  25% {
+    transform: translate(calc(-50% + 60px), calc(-50% - 50px)) scale(1.2);
+  }
+
+  50% {
+    transform: translate(calc(-50% - 40px), calc(-50% + 40px)) scale(0.9);
+  }
+
+  75% {
+    transform: translate(calc(-50% + 30px), calc(-50% + 60px)) scale(1.1);
+  }
+}
+
+@keyframes float-4 {
+
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  50% {
+    transform: translate(-30px, 50px) rotate(180deg);
+  }
+}
+
+@keyframes float-5 {
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(40px, -30px) scale(1.1);
+  }
+
+  66% {
+    transform: translate(-30px, 40px) scale(0.95);
+  }
+}
+
+/* Gradient shift animation */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Grid pulse animation */
+@keyframes grid-pulse {
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Particle floating animation */
+@keyframes particle {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  90% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(-100vh) translateX(50px);
+    opacity: 0;
+  }
+}
+
+/* Apply animations via Tailwind classes */
+.animate-float-1 {
+  animation: float-1 20s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: float-2 25s ease-in-out infinite;
+}
+
+.animate-float-3 {
+  animation: float-3 30s ease-in-out infinite;
+}
+
+.animate-float-4 {
+  animation: float-4 15s ease-in-out infinite;
+}
+
+.animate-float-5 {
+  animation: float-5 22s ease-in-out infinite;
+}
+
+.animate-gradient-shift {
+  animation: gradient-shift 15s ease infinite;
+}
+
+.animate-grid-pulse {
+  animation: grid-pulse 4s ease-in-out infinite;
+}
+
+.animate-particle {
+  animation: particle linear infinite;
+}
+
+/* Slim vertical slider tracks */
+input[type="range"].vertical-slider {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 16px;
+  /* Match thumb width for proper alignment */
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+input[type="range"].vertical-slider::-webkit-slider-runnable-track {
+  width: 4px;
+  background: #1f2937;
+  border-radius: 2px;
+  margin: 0 auto;
+  /* Center the track horizontally */
+}
+
+input[type="range"].vertical-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  transform: translateX(-5.5px);
+  /* Isolator positioning - 1px right from original */
+}
+
+input[type="range"].vertical-slider::-moz-range-track {
+  width: 4px;
+  background: #1f2937;
+  border-radius: 2px;
+}
+
+input[type="range"].vertical-slider::-moz-range-thumb {
+  transform: translateX(-4.5px);
+}
+
+/* Graphic EQ specific positioning */
+input[type="range"].graphic-eq-slider::-webkit-slider-thumb {
+  transform: translateX(-4px) !important;
+}
+
+input[type="range"].graphic-eq-slider::-moz-range-thumb {
+  transform: translateX(-4px) !important;
+}

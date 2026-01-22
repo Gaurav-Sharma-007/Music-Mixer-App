@@ -141,7 +141,7 @@ const App: React.FC = () => {
   if (!started) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white relative overflow-hidden">
-        <AnimatedBackground />
+        <AnimatedBackground themeName={currentTheme.name} />
 
         <div className="z-10 text-center p-12 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl animate-fade-in-up">
           <h1 className="text-6xl font-black mb-8 tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 drop-shadow-lg">
@@ -166,8 +166,8 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen text-white flex flex-col font-sans relative overflow-hidden">
-      <AnimatedBackground />
+    <div className="min-h-screen text-white flex flex-col font-sans relative">
+      <AnimatedBackground themeName={currentTheme.name} />
 
       <header className="flex-none p-6 flex justify-between items-center z-10 border-b border-white/5 bg-black/20 backdrop-blur-md">
         <div className="flex items-center gap-4">
@@ -255,8 +255,8 @@ const App: React.FC = () => {
       {showRouter && renderRouter()}
 
       {/* Main Workspace */}
-      <div className="flex-grow flex relative overflow-hidden">
-        <main className={`flex-1 flex flex-col lg:flex-row items-center justify-center gap-6 p-6 lg:p-12 relative z-10 transition-all duration-300 ${showQueue ? 'mr-80' : ''}`}>
+      <div className="flex-grow flex relative overflow-hidden z-10">
+        <main className={`flex-1 flex flex-col lg:flex-row items-center justify-center gap-6 p-6 lg:p-12 relative transition-all duration-300 ${showQueue ? 'mr-80' : ''}`}>
 
           {/* DECK A */}
           {deckA && (

@@ -1,0 +1,344 @@
+Create a professional DJ mixing application called "BLANCDJ" - a high-performance, desktop music mixer with the following comprehensive requirements:
+
+═══════════════════════════════════════════════════════════════════════════════
+CORE TECHNOLOGY STACK
+═══════════════════════════════════════════════════════════════════════════════
+
+- Build as an Electron desktop application for native performance
+- Use React 19 with TypeScript for the UI
+- Use Vite as the build tool
+- Implement all audio processing using the native Web Audio API (AudioContext, BiquadFilterNode, AudioWorklet)
+- Style with Tailwind CSS for a modern, premium look
+- Use Canvas API for real-time waveform and spectrum visualizations
+
+═══════════════════════════════════════════════════════════════════════════════
+DUAL DECK SYSTEM
+═══════════════════════════════════════════════════════════════════════════════
+
+Create two independent virtual DJ decks (Deck A and Deck B) with:
+
+1. PLAYBACK CONTROLS:
+   - Play/Pause functionality with vinyl-style visual feedback
+   - Variable playback speed (Tempo) ranging from 0.5x to 1.5x with pitch shifting
+   - Precision seek bar with time display (MM:SS format)
+   - "Brake" effect that simulates a turntable stopping
+   - Support for MP3, WAV, and OGG audio formats
+
+2. VISUAL FEEDBACK:
+   - Animated vinyl platter that rotates when playing
+   - Real-time waveform visualization
+   - Deck A should use blue/cyan accent colors
+   - Deck B should use purple/fuchsia accent colors
+
+3. LOOPING SYSTEM:
+   - Manual Loop In/Out point setting
+   - Seamless looping between set points
+   - Loop Exit button to return to normal playback
+
+4. FILE LOADING:
+   - Drag-and-drop support for audio files
+   - File browser button for manual selection
+   - Display currently loaded track name
+
+═══════════════════════════════════════════════════════════════════════════════
+PROFESSIONAL MIXER
+═══════════════════════════════════════════════════════════════════════════════
+
+1. CROSSFADER:
+   - Smooth blending between Deck A and Deck B
+   - Custom crossfader curves for professional mixing
+   - Visual indicator of current position
+
+2. 3-BAND ISOLATOR EQ (Per Deck):
+   - Low, Mid, and High frequency controls
+   - "Kill" capability (can reduce to -infinity dB for dramatic cuts)
+   - Vertical sliders with visual feedback
+   - Color-coded: Low (red), Mid (yellow), High (cyan)
+   - Double-click to reset to center position
+
+3. 8-BAND GRAPHIC EQ (Per Deck):
+   - Frequency bands: 60Hz, 150Hz, 400Hz, 1kHz, 2.4kHz, 6kHz, 12kHz, 15kHz
+   - Range: -26dB to +6dB per band
+   - Vertical sliders for precise control
+   - Preset system with options: Flat, Bass Boost, Vocal, Treble Boost, etc.
+
+4. VU METERS:
+   - Real-time stereo visualization of audio levels
+   - Peak indicators
+
+═══════════════════════════════════════════════════════════════════════════════
+EFFECTS & PROCESSING
+═══════════════════════════════════════════════════════════════════════════════
+
+Implement the following audio effects per deck:
+
+1. NOISE GATE:
+   - Adjustable threshold from -60dB to -10dB
+   - Eliminates background hiss from external inputs
+   - Visual indicator when gate is active
+
+2. REVERB:
+   - Room simulation effect
+   - Mix control from 0% to 100%
+   - Adds spatial depth to the mix
+
+3. DELAY:
+   - Echo/Delay effect
+   - Mix control from 0% to 80%
+   - For creative transitions
+
+═══════════════════════════════════════════════════════════════════════════════
+SAMPLER
+═══════════════════════════════════════════════════════════════════════════════
+
+Create a 4-pad sampler bank per deck:
+- Click "+ LOAD" to assign audio samples (drums, FX, vocals)
+- Left-click loaded pads to trigger one-shot playback
+- Right-click to unload/clear a sample
+- Visual feedback when samples are loaded
+
+═══════════════════════════════════════════════════════════════════════════════
+EXTERNAL INPUT & ROUTING
+═══════════════════════════════════════════════════════════════════════════════
+
+1. SYSTEM AUDIO CAPTURE:
+   - Ability to capture audio from other applications (Spotify, YouTube, Browser)
+   - Desktop audio source selector using Electron's desktopCapturer
+   - Route captured audio directly into a deck for mixing
+   - Live input indicator
+
+2. MULTI-OUTPUT AUDIO ROUTER:
+   - Send master output to multiple audio devices simultaneously
+   - Support for routing to local speakers + Bluetooth devices
+   - Device selection interface with refresh capability
+   - Auto-mute local speakers when routing is active
+
+═══════════════════════════════════════════════════════════════════════════════
+YOUTUBE INTEGRATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Implement YouTube audio loading functionality:
+
+1. DIRECT URL LOADING:
+   - Paste YouTube video URL to download and load audio
+   - Support for both youtube.com and youtu.be links
+   - Automatic playlist URL filtering
+
+2. SEARCH FUNCTIONALITY:
+   - YouTube Data API v3 integration
+   - Search by keywords
+   - Display results with thumbnails, titles, and channel names
+   - Click to load directly into deck
+   - API key storage in localStorage
+
+3. DOWNLOAD SYSTEM:
+   - Use yt-dlp as primary download method (via execFile)
+   - Fallback to play-dl library if yt-dlp fails
+   - Download progress indicator
+   - Error handling with user feedback
+
+═══════════════════════════════════════════════════════════════════════════════
+MUSIC QUEUE MANAGEMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+Create an integrated playlist/queue system:
+- Sidebar panel that slides in from the right
+- Drag & drop to add files to queue
+- Drag to reorder tracks
+- One-click loading to Deck A or Deck B
+- Remove tracks from queue
+- Visual feedback for queue items
+
+═══════════════════════════════════════════════════════════════════════════════
+THEME SYSTEM
+═══════════════════════════════════════════════════════════════════════════════
+
+Implement multiple visual themes with dynamic backgrounds:
+- Theme selector dropdown in header
+- Animated gradient backgrounds that respond to the current theme
+- Themes should include variations like:
+  * Default (blue/purple gradients)
+  * Sunset (warm colors)
+  * Ocean (cool blues)
+  * Forest (greens)
+  * Neon (vibrant colors)
+- Smooth transitions between themes
+
+═══════════════════════════════════════════════════════════════════════════════
+USER INTERFACE DESIGN
+═══════════════════════════════════════════════════════════════════════════════
+
+Create a premium, professional DJ interface with:
+
+1. VISUAL AESTHETICS:
+   - Dark theme with glassmorphism effects (backdrop-blur)
+   - Neon accent colors (cyan/blue for Deck A, purple/fuchsia for Deck B)
+   - Smooth animations and transitions
+   - Glowing effects on interactive elements
+   - Professional typography with tracking and spacing
+
+2. LAYOUT:
+   - Centered dual-deck layout
+   - Mixer in the center between decks
+   - Collapsible queue panel on the right
+   - Top header with logo, status indicators, and controls
+   - Footer with audio engine information
+
+3. INTERACTIVE ELEMENTS:
+   - Hover effects on all controls
+   - Visual feedback for active states
+   - Smooth slider animations
+   - Responsive design that works on different screen sizes
+
+4. STARTUP SCREEN:
+   - "ENTER STUDIO" button to initialize AudioContext
+   - Animated background
+   - Professional branding
+
+═══════════════════════════════════════════════════════════════════════════════
+TUTORIAL SYSTEM
+═══════════════════════════════════════════════════════════════════════════════
+
+Create a built-in tutorial modal that explains:
+- How to load tracks
+- Playback controls
+- Mixing techniques
+- EQ and effects usage
+- Looping functionality
+- Sampler usage
+- Keyboard shortcuts
+- External input capture
+
+═══════════════════════════════════════════════════════════════════════════════
+AUDIO ARCHITECTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+Implement a robust audio engine with:
+
+1. SINGLETON AUDIO CONTEXT:
+   - Single AudioContext instance shared across the app
+   - Proper initialization and resume handling
+
+2. DECK CLASS:
+   - Individual audio source management
+   - Buffer loading and decoding
+   - Stream input support
+   - Speed/pitch control
+   - Volume control
+   - Loop management
+   - Sample playback (4 slots)
+   - Integration with EQ, effects, and noise gate
+
+3. CROSSFADER CLASS:
+   - Dual input nodes (Deck A and Deck B)
+   - Smooth gain ramping
+   - Single output node
+
+4. THREE-BAND EQ CLASS:
+   - Low, Mid, High frequency isolation
+   - BiquadFilter nodes
+   - Kill functionality
+
+5. GRAPHIC EQ CLASS:
+   - 8-band parametric EQ
+   - Preset management
+
+6. EFFECTS CLASSES:
+   - Delay with feedback control
+   - Reverb with convolution
+   - Noise gate with dynamic threshold
+
+7. AUDIO ROUTING:
+   - Local output path (to speakers)
+   - Stream output path (for routing to other devices)
+   - MediaStreamDestination for multi-output support
+
+═══════════════════════════════════════════════════════════════════════════════
+ELECTRON INTEGRATION
+═══════════════════════════════════════════════════════════════════════════════
+
+1. MAIN PROCESS:
+   - Window creation with proper dimensions (1280x800)
+   - Icon configuration
+   - IPC handlers for:
+     * Desktop source capture (GET_SOURCES)
+     * YouTube search (YOUTUBE_SEARCH)
+     * YouTube audio download (LOAD_YOUTUBE_AUDIO)
+   - Development mode with DevTools
+   - Production build support
+
+2. PRELOAD SCRIPT:
+   - Expose safe IPC methods to renderer
+   - Context isolation
+   - Type-safe API definitions
+
+3. BUILD CONFIGURATION:
+   - electron-builder setup
+   - NSIS installer for Windows
+   - App icon and metadata
+   - Output to dist-electron directory
+
+═══════════════════════════════════════════════════════════════════════════════
+DEVELOPMENT FEATURES
+═══════════════════════════════════════════════════════════════════════════════
+
+Include helpful development tools:
+- "Test Beep" button to verify audio output
+- AudioContext state indicator
+- Local speaker mute toggle
+- Console logging for debugging
+- ESLint configuration
+- TypeScript strict mode
+
+═══════════════════════════════════════════════════════════════════════════════
+NPM SCRIPTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Set up the following scripts:
+- `npm run dev` - Start Vite dev server
+- `npm run dev:electron` - Run both Vite and Electron concurrently
+- `npm run build` - Build TypeScript and Vite
+- `npm run build:electron` - Build and create distributable
+- `npm run lint` - Run ESLint
+
+═══════════════════════════════════════════════════════════════════════════════
+ADDITIONAL REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. ERROR HANDLING:
+   - Graceful error messages for failed file loads
+   - YouTube download error handling with fallback
+   - Audio context state management
+   - Permission handling for system audio capture
+
+2. PERFORMANCE:
+   - Efficient requestAnimationFrame loops for visualizations
+   - Proper cleanup of audio nodes
+   - Optimized re-renders with React hooks
+   - Debounced slider updates where appropriate
+
+3. ACCESSIBILITY:
+   - Keyboard shortcuts (e.g., Spacebar for play/pause)
+   - Tooltips on complex controls
+   - Clear visual feedback for all interactions
+
+4. BRANDING:
+   - App name: "BLANCDJ"
+   - Tagline: "Professional Web Audio Interface"
+   - Footer: "Defined by Sound"
+   - Logo integration
+
+═══════════════════════════════════════════════════════════════════════════════
+DELIVERABLES
+═══════════════════════════════════════════════════════════════════════════════
+
+The final application should include:
+- Complete source code with TypeScript
+- README.md with installation and usage instructions
+- Project architecture documentation
+- All necessary configuration files (package.json, tsconfig, vite.config, etc.)
+- Logo and assets
+- Working development and production builds
+- Distributable installer for Windows
+
+The application should feel like a professional DJ tool with studio-grade audio quality, responsive controls, and a visually stunning interface that would impress both amateur and professional DJs.

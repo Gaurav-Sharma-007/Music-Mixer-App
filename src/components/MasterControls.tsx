@@ -146,7 +146,7 @@ const MasterControls: React.FC = () => {
     };
 
     return (
-        <div className="bg-zinc-900/80 border border-white/10 rounded-xl p-4 flex flex-col items-center gap-4 w-full backdrop-blur-md">
+        <div className="bg-zinc-900/40 border border-white/10 rounded-xl p-2 flex flex-col items-center gap-2 w-full backdrop-blur-md">
             {/* Visualizer Canvas */}
             <div className="w-full h-16 bg-black/40 rounded border border-white/5 overflow-hidden relative">
                 <canvas ref={canvasRef} width={300} height={64} className="w-full h-full" />

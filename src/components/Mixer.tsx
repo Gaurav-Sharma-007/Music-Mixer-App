@@ -120,7 +120,7 @@ const Mixer: React.FC<MixerProps> = ({ crossfader, deckA, deckB }) => {
             return (
                 <div
                     key={i}
-                    className={`w-full h-[3%] rounded-sm mb-[2%] transition-colors duration-75 ${bgClass}`}
+                    className={`w-full flex-1 rounded-full transition-colors duration-75 ${bgClass}`}
                 ></div>
             );
         });
@@ -128,27 +128,27 @@ const Mixer: React.FC<MixerProps> = ({ crossfader, deckA, deckB }) => {
 
     return (
         <div className="flex flex-col items-center justify-between h-full w-full gap-4">
-            <h2 className="text-xl font-black mb-2 text-transparent bg-clip-text bg-gradient-to-r from-gray-200 to-gray-500 uppercase tracking-[0.2em]">Mixer</h2>
+            <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gray-200 to-gray-500 uppercase tracking-[0.2em]">Mixer</h2>
 
             <MasterControls />
 
             {/* VU Meters (Real-time) */}
-            <div className="flex gap-4 mb-4 h-48">
+            <div className="flex gap-4 h-52">
                 {/* Deck A Meter */}
                 <div className="flex flex-col gap-[2px] items-center">
-                    <span className="text-[9px] font-mono text-gray-500 mb-1">DK A</span>
-                    <div className="w-3 h-full bg-black/40 rounded-full overflow-hidden border border-white/5 relative flex flex-col-reverse p-[2px]">
+                    <span className="text-[11px] font-mono text-gray-200 mb-1">DK A</span>
+                    <div className="w-3.5 h-full bg-black/20 backdrop-blur-sm rounded-full overflow-hidden border border-white/10 relative flex flex-col-reverse p-[1px] gap-px">
                         {renderBars(levelA)}
-                        <div className="absolute bottom-0 left-[2px] right-[2px] top-[40%] bg-gradient-to-t from-green-500 via-yellow-500 to-red-500 opacity-20 mix-blend-overlay pointer-events-none"></div>
+                        <div className="absolute bottom-0 left-[2px] right-[2px] top-[40%] bg-gradient-to-t from-green-500 via-yellow-500 to-red-500 opacity-10 mix-blend-overlay pointer-events-none"></div>
                     </div>
                 </div>
 
                 {/* Deck B Meter */}
                 <div className="flex flex-col gap-[2px] items-center">
-                    <span className="text-[9px] font-mono text-gray-500 mb-1">DK B</span>
-                    <div className="w-3 h-full bg-black/40 rounded-full overflow-hidden border border-white/5 relative flex flex-col-reverse p-[2px]">
+                    <span className="text-[11px] font-mono text-gray-200 mb-1">DK B</span>
+                    <div className="w-3.5 h-full bg-black/20 backdrop-blur-sm rounded-full overflow-hidden border border-white/10 relative flex flex-col-reverse p-[1px] gap-px">
                         {renderBars(levelB)}
-                        <div className="absolute bottom-0 left-[2px] right-[2px] top-[40%] bg-gradient-to-t from-green-500 via-yellow-500 to-red-500 opacity-20 mix-blend-overlay pointer-events-none"></div>
+                        <div className="absolute bottom-0 left-[2px] right-[2px] top-[40%] bg-gradient-to-t from-green-500 via-yellow-500 to-red-500 opacity-10 mix-blend-overlay pointer-events-none"></div>
                     </div>
                 </div>
             </div>

@@ -45,6 +45,73 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         }
     }, [externalLoad]);
 
+    const handleYoutubeSubmit = async (urlToLoad?: string) => {
+        const targetUrl = typeof urlToLoad === 'string' ? urlToLoad : youtubeUrl;
+        if (!targetUrl || !targetUrl.trim()) return;
+
+        setIsDownloading(true);
+        try {
+            if (window.electronAPI) {
+                setTrackName('Downloading YouTube...');
+                const response = await window.electronAPI.loadYoutube(targetUrl.trim());
+                console.log("Received response from Main (RAW):", response);
+                console.log("Type of response:", typeof response);
+
+                let rawBuffer: any;
+                let title = 'YouTube Track';
+
+                // Check if response is the new object format { buffer, title }
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                if (response && (response as any).buffer && (response as any).title) {
+                    console.log("DETECTED NEW FORMAT: Object with buffer and title");
+                    rawBuffer = (response as any).buffer;
+
+                    if ((response as any).title && (response as any).title !== 'YouTube Track') {
+                        title = (response as any).title;
+                        console.log("SETTING TITLE TO:", title);
+                    } else {
+                        console.log("Title was empty or default");
+                    }
+                } else {
+                    console.log("DETECTED OLD FORMAT: Raw buffer/Uint8Array");
+                    // Fallback for old format
+                    rawBuffer = response;
+                }
+
+                // Electron IPC sends Buffer as Uint8Array. 
+                // deck.load expects ArrayBuffer. 
+                // If rawBuffer is Uint8Array (which has .buffer), use that.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const arrayBuffer = (rawBuffer as any).buffer ? (rawBuffer as any).buffer : rawBuffer;
+
+                if (arrayBuffer.byteLength === 0) {
+                    throw new Error("Received empty audio buffer");
+                }
+
+                await deck.load(arrayBuffer);
+                setTrackName(title);
+                setDuration(deck.getDuration());
+                setIsLoaded(true);
+                setInputType('file');
+
+                deck.play();
+                setIsPlaying(true);
+
+                setShowYoutubeInput(false);
+                setYoutubeUrl(''); // Reset search bar
+                setSearchResults([]); // Reset results
+            } else {
+                alert("YouTube integration requires Electron App");
+            }
+        } catch (error) {
+            console.error("YouTube Load Failed", error);
+            setTrackName('Download Failed');
+            alert("Failed to load YouTube URL. Check console.");
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
     const handleYoutubeSearch = async () => {
         if (!youtubeUrl) return;
 
@@ -166,53 +233,6 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
 
     const handleYoutubeClick = () => {
         setShowYoutubeInput(true);
-    };
-
-    const handleYoutubeSubmit = async (urlToLoad?: string) => {
-        const targetUrl = typeof urlToLoad === 'string' ? urlToLoad : youtubeUrl;
-        if (!targetUrl) return;
-
-        setIsDownloading(true);
-        try {
-            if (window.electronAPI) {
-                setTrackName('Downloading YouTube...');
-                const rawBuffer = await window.electronAPI.loadYoutube(targetUrl);
-
-                console.log("Received buffer from Main:", rawBuffer);
-
-                // Electron IPC sends Buffer as Uint8Array. 
-                // deck.load expects ArrayBuffer. 
-                // If rawBuffer is Uint8Array (which has .buffer), use that.
-                // We cast to any to avoid TS errors since we know runtime behavior differs from strict .d.ts
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const arrayBuffer = (rawBuffer as any).buffer ? (rawBuffer as any).buffer : rawBuffer;
-
-                if (arrayBuffer.byteLength === 0) {
-                    throw new Error("Received empty audio buffer");
-                }
-
-                await deck.load(arrayBuffer);
-                setTrackName('YouTube Track');
-                setDuration(deck.getDuration());
-                setIsLoaded(true);
-                setInputType('file');
-
-                deck.play();
-                setIsPlaying(true);
-
-                setShowYoutubeInput(false);
-                setYoutubeUrl(''); // Reset search bar
-                setSearchResults([]); // Reset results
-            } else {
-                alert("YouTube integration requires Electron App");
-            }
-        } catch (error) {
-            console.error("YouTube Load Failed", error);
-            setTrackName('Download Failed');
-            alert("Failed to load YouTube URL. Check console.");
-        } finally {
-            setIsDownloading(false);
-        }
     };
 
     const togglePlay = () => {
@@ -458,13 +478,21 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                 <div className="flex gap-2 text-xs">
                     <button
                         onClick={() => { }}
-                        className={`px-3 py-1 rounded-full border ${inputType === 'file' ? 'bg-white/10 border-white/30 text-white' : 'border-white/10 text-gray-500'}`}
+                        className={`px-3 py-1 rounded-full border transition-all duration-300 font-bold text-[10px] tracking-wider 
+                            ${inputType === 'file'
+                                ? (color === 'blue' ? 'bg-neon-blue/20 border-neon-blue text-neon-blue shadow-[0_0_10px_rgba(77,159,255,0.3)]' : 'bg-neon-purple/20 border-neon-purple text-neon-purple shadow-[0_0_10px_rgba(181,55,242,0.3)]')
+                                : 'border-white/10 text-gray-500 hover:border-white/30 hover:text-white bg-transparent'
+                            }`}
                     >
                         FILE
                     </button>
                     <button
                         onClick={handleYoutubeClick}
-                        className={`px-3 py-1 rounded-full border border-red-500/30 text-red-400 hover:bg-red-500/20 hover:text-white transition-colors`}
+                        className={`px-3 py-1 rounded-full border transition-all duration-300 font-bold text-[10px] tracking-wider
+                            ${color === 'blue'
+                                ? 'border-neon-blue/30 text-neon-blue/70 hover:bg-neon-blue/10 hover:text-neon-blue'
+                                : 'border-neon-purple/30 text-neon-purple/70 hover:bg-neon-purple/10 hover:text-neon-purple'
+                            }`}
                     >
                         YOUTUBE
                     </button>
@@ -562,7 +590,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                                         [&::-webkit-slider-thumb]:appearance-none 
                                         [&::-webkit-slider-thumb]:w-4 
                                         [&::-webkit-slider-thumb]:h-4 
-                                        [&::-webkit-slider-thumb]:${color === 'blue' ? 'bg-cyan-400' : 'bg-fuchsia-400'} 
+                                        [&::-webkit-slider-thumb]:${color === 'blue' ? 'bg-neon-blue' : 'bg-neon-purple'} 
                                         [&::-webkit-slider-thumb]:rounded-full 
                                         [&::-webkit-slider-thumb]:border-2 
                                         [&::-webkit-slider-thumb]:border-white 
@@ -635,11 +663,19 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                                         step="0.1"
                                         value={eqGains[index]}
                                         onChange={(e) => handleEQChange(index, parseFloat(e.target.value))}
-                                        // Use style for vertical slider support in WebKit
-                                        style={{ WebkitAppearance: 'slider-vertical' }}
-                                        className="w-full h-full bg-transparent appearance-none cursor-pointer [&::-webkit-slider-thumb]:bg-gray-300 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-moz-range-thumb]:bg-gray-300"
+                                        className="vertical-slider graphic-eq-slider h-full appearance-none cursor-pointer 
+                                            [&::-webkit-slider-thumb]:appearance-none
+                                            [&::-webkit-slider-thumb]:bg-gray-300 
+                                            [&::-webkit-slider-thumb]:w-3 
+                                            [&::-webkit-slider-thumb]:h-3 
+                                            [&::-webkit-slider-thumb]:rounded-full 
+                                            [&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(255,255,255,0.5)]
+                                            hover:[&::-webkit-slider-thumb]:bg-white
+                                            hover:[&::-webkit-slider-thumb]:scale-110
+                                            [&::-moz-range-thumb]:bg-gray-300
+                                            [&::-moz-range-thumb]:border-0"
                                     />
-                                    <div className="text-[8px] uppercase text-gray-500 font-mono -rotate-45 mt-1 origin-top-left translate-x-1">{band}</div>
+                                    <div className="text-[10px] uppercase text-gray-500 font-mono -rotate-45 mt-1 origin-top-left translate-x-1">{band}</div>
                                 </div>
                             ))}
                         </div>
@@ -668,9 +704,15 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                                             step="0.01"
                                             value={val}
                                             onChange={(e) => handleIsolatorChange(band as 'low' | 'mid' | 'high', parseFloat(e.target.value))}
-                                            style={{ WebkitAppearance: 'slider-vertical' }}
-                                            className={`flex-1 min-h-0 w-full bg-transparent appearance-none cursor-pointer 
-                                                [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-[0_0_5px_rgba(0,0,0,0.5)]
+                                            className={`vertical-slider flex-1 min-h-0 appearance-none cursor-pointer 
+                                                [&::-webkit-slider-thumb]:appearance-none
+                                                [&::-webkit-slider-thumb]:w-4 
+                                                [&::-webkit-slider-thumb]:h-4 
+                                                [&::-webkit-slider-thumb]:rounded-full 
+                                                [&::-webkit-slider-thumb]:shadow-[0_0_10px_currentColor]
+                                                [&::-webkit-slider-thumb]:border-2
+                                                [&::-webkit-slider-thumb]:border-white/30
+                                                hover:[&::-webkit-slider-thumb]:scale-110
                                                 ${band === 'low' ? '[&::-webkit-slider-thumb]:bg-red-400' : ''}
                                                 ${band === 'mid' ? '[&::-webkit-slider-thumb]:bg-yellow-400' : ''}
                                                 ${band === 'high' ? '[&::-webkit-slider-thumb]:bg-cyan-400' : ''}
@@ -762,7 +804,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-center">
-                    <FileLoader onFileSelect={handleFileSelect} />
+                    <FileLoader onFileSelect={handleFileSelect} color={color} />
 
                     {/* Main Volume Fader - Fixed Layout */}
                     <div className="flex items-center gap-3 bg-black/30 p-2 rounded-lg border border-white/5 w-full">
