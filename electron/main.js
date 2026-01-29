@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 
 const require = createRequire(import.meta.url);
@@ -22,9 +22,10 @@ function createWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             preload: path.join(__dirname, "preload.js"),
-            zoomFactor: 0.7
+            zoomFactor: 0.7,
+            webSecurity: false
         },
-        icon: path.join(__dirname, "../public/logo.png")
+        icon: path.join(__dirname, "../dist/logo.png")
     });
 
     if (!app.isPackaged) {
@@ -38,6 +39,36 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+
+    // Spawn Python Server
+    const pythonScript = path.join(__dirname, "../backend/server.py");
+    console.log("[Python] Spawning server at:", pythonScript);
+
+    let pythonProcess = spawn("python", [pythonScript]);
+
+    pythonProcess.stdout.on('data', (data) => {
+        console.log(`[Python] ${data}`);
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        console.error(`[Python] ${data}`);
+    });
+
+    pythonProcess.on('error', (err) => {
+        console.error('[Python] Failed to start process:', err);
+    });
+
+    pythonProcess.on('exit', (code, signal) => {
+        console.log(`[Python] Server exited with code ${code} and signal ${signal}`);
+    });
+
+    // Ensure we kill python on exit
+    app.on('will-quit', () => {
+        if (pythonProcess) {
+            console.log("[Python] Killing server...");
+            pythonProcess.kill();
+        }
+    });
 
     ipcMain.handle("GET_SOURCES", async (_, types) => {
         const sources = await desktopCapturer.getSources({ types });
@@ -169,7 +200,7 @@ app.whenReady().then(async () => {
     // Enhanced audio loading with better error handling and progress updates
     ipcMain.handle("LOAD_YOUTUBE_AUDIO", async (event, input) => {
         try {
-            console.log("[YouTube] ===== NEW REQUEST =====");
+            console.log("[YouTube] ===== NEW REQUEST (STRICT: PYTHON) =====");
             console.log("[YouTube] Input received:", input);
 
             if (!input || typeof input !== 'string') {
@@ -178,7 +209,6 @@ app.whenReady().then(async () => {
             }
 
             let url = input.trim();
-
             // Normalize URL
             if (!url.startsWith("http")) {
                 url = `https://www.youtube.com/watch?v=${url.split("&")[0]}`;
@@ -198,153 +228,121 @@ app.whenReady().then(async () => {
                 progress: 0
             });
 
-            // Try yt-dlp first
+            // PRIORITY 1: PYTHON SERVER (PRIMARY)
             try {
-                console.log("[YouTube] Attempting download with yt-dlp...");
+                console.log("[YouTube] Attempting download with Python Server...");
+                event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", { videoId, status: "downloading", progress: 10 });
 
-                // First get the title
+                const response = await fetch("http://127.0.0.1:5000/download", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || "Python server error");
+                }
+
+                console.log("[YouTube] Python download success:", result.title);
+                console.log("[YouTube] File path:", result.file_path);
+
+                event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", { videoId, status: "downloading", progress: 90 });
+
+                // Read the file buffer
+                const buffer = fs.readFileSync(result.file_path);
+
+                // Auto-cleanup: Delete file after reading
+                try {
+                    fs.unlinkSync(result.file_path);
+                    console.log("[YouTube] Cleaned up temporary file:", result.file_path);
+                } catch (cleanupError) {
+                    console.warn("[YouTube] Failed to cleanup temp file:", cleanupError.message);
+                }
+
+                event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", { videoId, status: "complete", progress: 100 });
+
+                return {
+                    buffer: new Uint8Array(buffer),
+                    title: result.title || "YouTube Track"
+                };
+
+            } catch (pythonError) {
+                console.warn("[YouTube] Python server failed:", pythonError.message);
+                event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", { videoId, status: "fallback", progress: 0 });
+
+                // PRIORITY 2: YT-DLP FALLBACK (ONLY IF PYTHON FAILS)
+                console.log("[YouTube] Falling back to yt-dlp...");
+
+                // Resolve yt-dlp path
+                let ytDlpPath = 'yt-dlp'; // Default to PATH
+                if (app.isPackaged) {
+                    const bundledPath = path.join(process.resourcesPath, 'yt-dlp', 'yt-dlp.exe');
+                    if (fs.existsSync(bundledPath)) {
+                        ytDlpPath = bundledPath;
+                    }
+                } else {
+                    const localPath = path.join(__dirname, '../yt-dlp/yt-dlp.exe');
+                    if (fs.existsSync(localPath)) {
+                        ytDlpPath = localPath;
+                    }
+                }
+
                 let videoTitle = "YouTube Track";
                 try {
-                    const { stdout: titleOut } = await execFilePromise('yt-dlp', [
-                        '--get-title',
-                        url
-                    ]);
-                    videoTitle = titleOut.trim();
-                    console.log("[YouTube] Found title:", videoTitle);
+                    const result = await execFilePromise(ytDlpPath, ['--get-title', url]);
+                    videoTitle = (result.stdout || "").trim() || "YouTube Track";
                 } catch (e) {
                     console.warn("[YouTube] Could not fetch title:", e.message);
                 }
 
-                const { stdout, stderr } = await execFilePromise('yt-dlp', [
+                const { stdout } = await execFilePromise(ytDlpPath, [
                     url,
                     '-f', 'bestaudio/best',
                     '--extract-audio',
                     '--audio-format', 'mp3',
-                    '--audio-quality', '0', // Best quality
+                    '--audio-quality', '0',
                     '--no-playlist',
                     '--no-warnings',
                     '-o', '-'
                 ], {
-                    maxBuffer: 100 * 1024 * 1024, // 100MB buffer
+                    maxBuffer: 100 * 1024 * 1024,
                     encoding: null
                 });
 
                 const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
-                console.log("[YouTube] yt-dlp download complete. Size:", buffer.length, "bytes");
 
                 if (buffer.length < 1000) {
-                    throw new Error(`Download failed: buffer too small (${buffer.length} bytes)`);
+                    throw new Error("yt-dlp buffer too small");
                 }
 
-                // Notify renderer about completion
-                event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", {
-                    videoId,
-                    status: "complete",
-                    progress: 100
-                });
-
+                event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", { videoId, status: "complete", progress: 100 });
                 return { buffer, title: videoTitle };
-
-            } catch (ytDlpError) {
-                console.error("[YouTube] yt-dlp failed:", ytDlpError.message);
-
-                // Notify about fallback
-                event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", {
-                    videoId,
-                    status: "fallback",
-                    progress: 0
-                });
-
-                // Fallback to play-dl
-                console.log("[YouTube] Falling back to play-dl...");
-                const play = (await import("play-dl")).default;
-
-                console.log("[YouTube] Fetching video info...");
-                const video = await play.video_info(url);
-                const stream = await play.stream(video.video_url);
-
-                console.log("[YouTube] Got stream, buffering audio...");
-
-                const chunks = [];
-                let totalSize = 0;
-
-                return new Promise((resolve, reject) => {
-                    stream.stream.on('data', (chunk) => {
-                        chunks.push(chunk);
-                        totalSize += chunk.length;
-
-                        // Send progress updates (approximate)
-                        event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", {
-                            videoId,
-                            status: "downloading",
-                            progress: Math.min(95, Math.floor((totalSize / (1024 * 1024)) * 10)) // rough estimate
-                        });
-                    });
-
-                    stream.stream.on('end', () => {
-                        const buffer = Buffer.concat(chunks);
-                        console.log("[YouTube] play-dl download complete. Size:", buffer.length, "bytes");
-
-                        if (buffer.length < 1000) {
-                            event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", {
-                                videoId,
-                                status: "error",
-                                progress: 0
-                            });
-                            reject(new Error(`Download failed: buffer too small (${buffer.length} bytes)`));
-                            return;
-                        }
-
-                        event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", {
-                            videoId,
-                            status: "complete",
-                            progress: 100
-                        });
-
-                        resolve({
-                            buffer,
-                            title: video.video_details.title || "YouTube Track"
-                        });
-                    });
-
-                    stream.stream.on('error', (error) => {
-                        console.error("[YouTube] Stream error:", error.message);
-                        event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", {
-                            videoId,
-                            status: "error",
-                            progress: 0
-                        });
-                        reject(new Error(`Stream error: ${error.message}`));
-                    });
-                });
             }
+
         } catch (error) {
             console.error("[YouTube] Error:", error.message);
-            console.error("[YouTube] Stack:", error.stack);
-
-            // Notify renderer about error
             event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", {
                 videoId: null,
                 status: "error",
                 progress: 0,
                 error: error.message
             });
-
             throw error;
         }
     });
 
-    // Clear cache handler (optional - for user preference)
+    // Clear cache handler
     ipcMain.handle("CLEAR_YOUTUBE_CACHE", async () => {
         videoCache.clear();
         console.log("[YouTube] Cache cleared");
         return true;
     });
 
-    // Get quota usage info (helpful for monitoring API limits)
+    // Get quota usage info
     ipcMain.handle("YOUTUBE_QUOTA_CHECK", async (_, apiKey) => {
         try {
-            // Make a simple API call to check if key is valid
             const url = new URL("https://www.googleapis.com/youtube/v3/videos");
             url.searchParams.append("part", "id");
             url.searchParams.append("id", "dQw4w9WgXcQ"); // Sample video

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Deck } from '../audio/Deck';
-import FileLoader from './FileLoader';
 import VinylPlatter from './VinylPlatter';
 import SourceSelector from './SourceSelector';
 import { EQ_PRESETS, type EQPresetName } from '../audio/EQPresets';
@@ -10,9 +9,11 @@ interface DeckControlsProps {
     title: string;
     color: 'blue' | 'purple';
     externalLoad?: { file: File; ts: number } | null;
+    externalYoutubeLoad?: { url: string; ts: number; buffer?: ArrayBuffer; title?: string } | null;
+    onTrackEnd?: () => void;
 }
 
-const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externalLoad }) => {
+const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externalLoad, externalYoutubeLoad, onTrackEnd }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [volume, setVolume] = useState(0.8);
     // Initialize 8 bands centered at 1 (0dB)
@@ -20,20 +21,27 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
     const [fx, setFx] = useState({ delay: 0, reverb: 0 });
     const [trackName, setTrackName] = useState('No Track Loaded');
     const [isLoaded, setIsLoaded] = useState(false);
-    const [inputType, setInputType] = useState<'file' | 'external'>('file');
+    const [inputType, setInputType] = useState<'file' | 'external' | 'youtube'>('file');
     const [sampleLoaded, setSampleLoaded] = useState([false, false, false, false]);
     const [showSourceSelector, setShowSourceSelector] = useState(false);
+    const [showLoadMenu, setShowLoadMenu] = useState(false);
+    const loadMenuRef = React.useRef<HTMLDivElement>(null);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     // YouTube Integration States
     const [showYoutubeInput, setShowYoutubeInput] = useState(false);
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
+    const [loadingVideoId, setLoadingVideoId] = useState<string | null>(null);
 
     // Search States
     const [apiKey, setApiKey] = useState(localStorage.getItem('yt_api_key') || '');
     const [apiKeyInput, setApiKeyInput] = useState('');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [searchResults, setSearchResults] = useState<any[]>([]);
+
+    // Track end detection ref
+    const trackEndHandledRef = React.useRef(false);
 
     const accentColor = color === 'blue' ? 'text-neon-blue' : 'text-neon-purple';
     const borderColor = color === 'blue' ? 'border-neon-blue/30' : 'border-neon-purple/30';
@@ -45,15 +53,83 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         }
     }, [externalLoad]);
 
+    // Handle External YouTube Load (Queue)
+    React.useEffect(() => {
+        if (externalYoutubeLoad) {
+            if (externalYoutubeLoad.buffer) {
+                // Use pre-loaded buffer for instant playback
+                handlePreloadedYoutube(externalYoutubeLoad.buffer, externalYoutubeLoad.url, externalYoutubeLoad.title);
+            } else {
+                // Fallback to regular loading - pass the URL string directly
+                handleYoutubeSubmit(externalYoutubeLoad.url);
+            }
+        }
+    }, [externalYoutubeLoad]);
+
+    // Close load menu when clicking outside
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (loadMenuRef.current && !loadMenuRef.current.contains(event.target as Node)) {
+                setShowLoadMenu(false);
+            }
+        };
+
+        if (showLoadMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showLoadMenu]);
+
+    const handlePreloadedYoutube = async (arrayBuffer: ArrayBuffer, url: string, videoTitle?: string) => {
+        try {
+            console.log('[Deck] Using pre-loaded buffer for instant playback');
+            setTrackName('Loading from queue...');
+
+            // Use provided title or extract from URL as fallback
+            let title = videoTitle || 'YouTube Track';
+            if (!videoTitle) {
+                const videoId = url.match(/(?:v=|\/)([\w-]{11})/)?.[1];
+                if (videoId) {
+                    title = `YouTube: ${videoId}`;
+                }
+            }
+
+            await deck.load(arrayBuffer);
+            setTrackName(title);
+            setDuration(deck.getDuration());
+            setIsLoaded(true);
+            setInputType('youtube');
+
+            deck.play();
+            setIsPlaying(true);
+        } catch (error) {
+            console.error('Failed to load pre-loaded buffer', error);
+            setTrackName('Load Failed');
+        }
+    };
+
     const handleYoutubeSubmit = async (urlToLoad?: string) => {
-        const targetUrl = typeof urlToLoad === 'string' ? urlToLoad : youtubeUrl;
-        if (!targetUrl || !targetUrl.trim()) return;
+        console.log("[Deck] handleYoutubeSubmit called. urlToLoad:", urlToLoad, "local state:", youtubeUrl);
+        // Ensure we always work with a string URL
+        const targetUrl = typeof urlToLoad === 'string' && urlToLoad.trim()
+            ? urlToLoad.trim()
+            : youtubeUrl.trim();
+
+        if (!targetUrl) {
+            console.warn('[DeckControls] handleYoutubeSubmit called with empty URL');
+            return;
+        }
+
+        console.log('[DeckControls] Calling loadYoutube with URL:', targetUrl);
 
         setIsDownloading(true);
         try {
             if (window.electronAPI) {
                 setTrackName('Downloading YouTube...');
-                const response = await window.electronAPI.loadYoutube(targetUrl.trim());
+                const response = await window.electronAPI.loadYoutube(targetUrl);
                 console.log("Received response from Main (RAW):", response);
                 console.log("Type of response:", typeof response);
 
@@ -92,7 +168,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                 setTrackName(title);
                 setDuration(deck.getDuration());
                 setIsLoaded(true);
-                setInputType('file');
+                setInputType('youtube');
 
                 deck.play();
                 setIsPlaying(true);
@@ -109,6 +185,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
             alert("Failed to load YouTube URL. Check console.");
         } finally {
             setIsDownloading(false);
+            setLoadingVideoId(null); // Clear loading state
         }
     };
 
@@ -140,6 +217,19 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         }
     };
 
+    const handleResultClick = (result: any) => {
+        console.log("[Deck] Search Result Clicked:", result);
+        if (result && result.id) {
+            setLoadingVideoId(result.id); // Set loading state for this video
+            const fullUrl = `https://www.youtube.com/watch?v=${result.id}`;
+            console.log("[Deck] Constructed URL:", fullUrl);
+            handleYoutubeSubmit(fullUrl);
+        } else {
+            console.error("[Deck] Invalid result object (missing id):", result);
+            alert("Could not load video: Invalid ID");
+        }
+    };
+
     const [gateThreshold, setGateThreshold] = useState(-50);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -165,6 +255,45 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         rafId = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(rafId);
     }, [deck, isPlaying]);
+
+    // Track End Detection for Auto-Queue
+    React.useEffect(() => {
+        if (inputType === 'file' && isPlaying && duration > 0 && currentTime > 0) {
+            // Check if track has ended (with small buffer to avoid false triggers)
+            if (currentTime >= duration - 0.1) {
+                // Prevent multiple triggers
+                if (trackEndHandledRef.current) return;
+                trackEndHandledRef.current = true;
+
+                // Call the callback if it exists (for auto-queue)
+                if (onTrackEnd) {
+                    onTrackEnd();
+
+                    // Set a timeout to stop playback if no new track loads
+                    setTimeout(() => {
+                        const nowTime = deck.getCurrentTime();
+                        const nowDuration = deck.getDuration();
+
+                        // If still at end of same track, stop
+                        // Check if we are past duration OR if duration is 0 (stopped/cleared)
+                        if (nowTime >= nowDuration - 0.1) {
+                            setIsPlaying(false);
+                            deck.pause();
+                        }
+                    }, 300);
+                } else {
+                    // No queue callback, stop immediately
+                    setIsPlaying(false);
+                    deck.pause();
+                }
+            } else {
+                // Reset flag when not at end (e.g. if user seeks back or new track loads)
+                if (currentTime < duration - 1.0) {
+                    trackEndHandledRef.current = false;
+                }
+            }
+        }
+    }, [currentTime, duration, isPlaying, inputType, onTrackEnd, deck]);
 
     const handleFileSelect = async (file: File) => {
         try {
@@ -448,9 +577,19 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                                     {searchResults.map((result) => (
                                         <div
                                             key={result.id}
-                                            onClick={() => handleYoutubeSubmit(`https://www.youtube.com/watch?v=${result.id}`)}
-                                            className="flex gap-3 p-2 hover:bg-white/10 rounded cursor-pointer group transition-colors"
+                                            onClick={() => !loadingVideoId && handleResultClick(result)}
+                                            className={`relative flex gap-3 p-2 rounded cursor-pointer group transition-colors overflow-hidden
+                                                ${loadingVideoId === result.id ? 'bg-white/10 border border-white/20' : 'hover:bg-white/10'}
+                                                ${loadingVideoId && loadingVideoId !== result.id ? 'opacity-50 cursor-not-allowed' : ''}
+                                            `}
                                         >
+                                            {loadingVideoId === result.id && (
+                                                <div className="absolute inset-0 z-10 bg-black/60 flex items-center justify-center gap-2">
+                                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                    <span className="text-[10px] font-bold text-white tracking-wider animate-pulse">DOWNLOADING...</span>
+                                                </div>
+                                            )}
+
                                             <img src={result.thumbnail} alt="" className="w-12 h-9 object-cover rounded opacity-80 group-hover:opacity-100" />
                                             <div className="flex-1 min-w-0 flex flex-col justify-center">
                                                 <div className="text-xs text-white font-bold truncate">{result.title}</div>
@@ -466,7 +605,13 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                         )}
 
                         <div className="flex justify-end pt-2 border-t border-white/5">
-                            <button onClick={() => setShowYoutubeInput(false)} className="px-3 py-1.5 rounded text-xs text-gray-400 hover:text-white">Close</button>
+                            <button
+                                onClick={() => !loadingVideoId && setShowYoutubeInput(false)}
+                                disabled={!!loadingVideoId}
+                                className={`px-3 py-1.5 rounded text-xs text-gray-400 hover:text-white ${loadingVideoId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                                Close
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -476,26 +621,24 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
             <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
                 <h2 className={`text-xl font-black ${accentColor} tracking-widest uppercase`}>{title}</h2>
                 <div className="flex gap-2 text-xs">
-                    <button
-                        onClick={() => { }}
-                        className={`px-3 py-1 rounded-full border transition-all duration-300 font-bold text-[10px] tracking-wider 
+                    <div
+                        className={`px-3 py-1 rounded-full border transition-all duration-300 font-bold text-[10px] tracking-wider cursor-default
                             ${inputType === 'file'
                                 ? (color === 'blue' ? 'bg-neon-blue/20 border-neon-blue text-neon-blue shadow-[0_0_10px_rgba(77,159,255,0.3)]' : 'bg-neon-purple/20 border-neon-purple text-neon-purple shadow-[0_0_10px_rgba(181,55,242,0.3)]')
-                                : 'border-white/10 text-gray-500 hover:border-white/30 hover:text-white bg-transparent'
+                                : 'border-white/10 text-gray-500 bg-transparent'
                             }`}
                     >
                         FILE
-                    </button>
-                    <button
-                        onClick={handleYoutubeClick}
-                        className={`px-3 py-1 rounded-full border transition-all duration-300 font-bold text-[10px] tracking-wider
-                            ${color === 'blue'
-                                ? 'border-neon-blue/30 text-neon-blue/70 hover:bg-neon-blue/10 hover:text-neon-blue'
-                                : 'border-neon-purple/30 text-neon-purple/70 hover:bg-neon-purple/10 hover:text-neon-purple'
+                    </div>
+                    <div
+                        className={`px-3 py-1 rounded-full border transition-all duration-300 font-bold text-[10px] tracking-wider cursor-default
+                            ${inputType === 'youtube'
+                                ? (color === 'blue' ? 'bg-neon-blue/20 border-neon-blue text-neon-blue shadow-[0_0_10px_rgba(77,159,255,0.3)]' : 'bg-neon-purple/20 border-neon-purple text-neon-purple shadow-[0_0_10px_rgba(181,55,242,0.3)]')
+                                : 'border-white/10 text-gray-500 bg-transparent'
                             }`}
                     >
                         YOUTUBE
-                    </button>
+                    </div>
                 </div>
             </div>
 
@@ -781,7 +924,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
             <div className="mt-6 pt-4 border-t border-white/5 flex flex-col gap-4 relative z-10">
 
                 {/* SEEK BAR */}
-                {inputType === 'file' && duration > 0 && (
+                {(inputType === 'file' || inputType === 'youtube') && duration > 0 && (
                     <div className="w-full flex items-center gap-3">
                         <span className="text-[10px] font-mono text-gray-400 w-8">{formatTime(currentTime)}</span>
                         <input
@@ -803,8 +946,72 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                     <div className={`absolute bottom-0 right-0 left-0 h-4 bg-gradient-to-t ${color === 'blue' ? 'from-blue-500/10' : 'from-purple-500/10'} to-transparent`}></div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-center">
-                    <FileLoader onFileSelect={handleFileSelect} color={color} />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-center relative">
+                    {/* Unified Load Button */}
+                    <div className="relative w-full" ref={loadMenuRef}>
+                        <button
+                            onClick={() => setShowLoadMenu(!showLoadMenu)}
+                            className={`
+                                w-full text-center cursor-pointer 
+                                ${color === 'blue' ? 'bg-gradient-to-r from-neon-blue to-blue-600 hover:from-neon-blue/80 hover:to-blue-500' : 'bg-gradient-to-r from-neon-purple to-purple-600 hover:from-neon-purple/80 hover:to-purple-500'} 
+                                text-white font-bold uppercase tracking-widest text-xs
+                                px-6 py-3 rounded-xl 
+                                ${color === 'blue' ? 'shadow-[0_0_15px_rgba(77,159,255,0.4)] hover:shadow-[0_0_25px_rgba(77,159,255,0.6)]' : 'shadow-[0_0_15px_rgba(181,55,242,0.4)] hover:shadow-[0_0_25px_rgba(181,55,242,0.6)]'}
+                                border border-white/20
+                                transform transition-all duration-300
+                                hover:scale-[1.02] active:scale-95
+                                flex items-center justify-center gap-2
+                            `}
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            LOAD TRACK
+                        </button>
+
+                        {/* Dropdown Menu */}
+                        {showLoadMenu && (
+                            <div className="absolute bottom-full left-0 w-full mb-2 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
+                                <button
+                                    onClick={() => {
+                                        setShowLoadMenu(false);
+                                        fileInputRef.current?.click();
+                                    }}
+                                    className="w-full px-4 py-3 text-left text-xs font-bold text-gray-300 hover:text-white hover:bg-white/10 flex items-center gap-3 transition-colors border-b border-white/5"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                                    </svg>
+                                    LOCAL FILE
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowLoadMenu(false);
+                                        handleYoutubeClick();
+                                    }}
+                                    className="w-full px-4 py-3 text-left text-xs font-bold text-gray-300 hover:text-white hover:bg-white/10 flex items-center gap-3 transition-colors"
+                                >
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
+                                    </svg>
+                                    YOUTUBE
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Hidden File Input */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="audio/mp3,audio/wav,audio/flac,audio/mpeg"
+                        className="hidden"
+                        onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                                handleFileSelect(e.target.files[0]);
+                            }
+                        }}
+                    />
 
                     {/* Main Volume Fader - Fixed Layout */}
                     <div className="flex items-center gap-3 bg-black/30 p-2 rounded-lg border border-white/5 w-full">

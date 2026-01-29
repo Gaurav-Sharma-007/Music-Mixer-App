@@ -52,7 +52,7 @@ const TutorialModal: React.FC<TutorialModalProps> = ({ onClose }) => {
                             <ul className="space-y-3 text-xs">
                                 <li className="flex gap-3">
                                     <span className="font-bold text-white min-w-[60px]">LOAD</span>
-                                    <span>Click the <strong>FILE</strong> button to load a local track (MP3/WAV) or drag & drop audio files directly. Use <strong>EXTERNAL</strong> to route system audio (Youtube, Spotify) into a deck.</span>
+                                    <span>Click the <strong>LOAD TRACK</strong> button and select <strong>LOCAL FILE</strong> to load music, or use <strong>YOUTUBE</strong> to search/play online videos.</span>
                                 </li>
                                 <li className="flex gap-3">
                                     <span className="font-bold text-white min-w-[60px]">PLAY</span>
@@ -63,7 +63,7 @@ const TutorialModal: React.FC<TutorialModalProps> = ({ onClose }) => {
                                     <span>Use the Tempo slider to adjust playback speed. Click <strong>RESET</strong> to return to 1.0x. Use <strong>BRAKE</strong> to simulate a vinyl stop.</span>
                                 </li>
                                 <li className="flex gap-3">
-                                    <span className="font-bold text-white min-w-[60px]">LOOP</span>
+                                    <span className="font-bold text-white min-w-[60px]">LOOP (Beta)</span>
                                     <span>Set <strong>IN</strong> and <strong>OUT</strong> points to create a loop. Click <strong>EXIT</strong> to resume normal playback.</span>
                                 </li>
                             </ul>
@@ -133,6 +133,48 @@ const TutorialModal: React.FC<TutorialModalProps> = ({ onClose }) => {
                                 <li className="flex gap-3">
                                     <span className="font-bold text-white min-w-[60px]">LOAD</span>
                                     <span>Click <strong>LOAD A</strong> or <strong>LOAD B</strong> on any track to instantly send it to a deck.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Section 6: YouTube Integration */}
+                        <div className="space-y-4 bg-black/20 p-6 rounded-xl border border-white/5">
+                            <h3 className="text-md font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                                YouTube Integration
+                            </h3>
+                            <ul className="space-y-3 text-xs">
+                                <li className="flex gap-3">
+                                    <span className="font-bold text-white min-w-[60px]">SEARCH</span>
+                                    <span>Click <strong>LOAD TRACK</strong> &rarr; <strong>YOUTUBE</strong> to search for tracks or paste a URL directly.</span>
+                                </li>
+                                <li className="flex gap-3">
+                                    <span className="font-bold text-white min-w-[60px]">QUEUE</span>
+                                    <span>Add YouTube videos to your Queue playlist. They will auto-download and buffer for instant playback.</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        {/* Section 7: Custom Themes */}
+                        <div className="space-y-4 bg-black/20 p-6 rounded-xl border border-white/5">
+                            <h3 className="text-md font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full"></span>
+                                Custom Themes (Beta)
+                            </h3>
+                            <ul className="space-y-3 text-xs">
+                                <li className="flex gap-3">
+                                    <span className="font-bold text-white min-w-[60px]">CREATE</span>
+                                    <span>Click the <strong>+</strong> button in the top bar to create a new theme.</span>
+                                </li>
+                                <li className="flex gap-3">
+                                    <span className="font-bold text-white min-w-[60px]">VIDEO</span>
+                                    <span>Upload your own MP4 background loops. They are saved automatically for your next session.</span>
+                                </li>
+                                <li className="flex gap-3">
+                                    <span className="font-bold text-white min-w-[60px]">EDIT</span>
+                                    <span>Click the <strong>✎</strong> icon to tweak colors or update the video of your custom theme.</span>
                                 </li>
                             </ul>
                         </div>

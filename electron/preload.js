@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     getDesktopSources: (types) => ipcRenderer.invoke('GET_SOURCES', types),
@@ -13,7 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             throw error;
         }
     },
-    searchYoutube: (query, apiKey) => ipcRenderer.invoke('YOUTUBE_SEARCH', query, apiKey)
+    searchYoutube: (query, apiKey) => ipcRenderer.invoke('YOUTUBE_SEARCH', query, apiKey),
+    getFilePath: (file) => webUtils.getPathForFile(file)
 });
 
 // Preload scripts

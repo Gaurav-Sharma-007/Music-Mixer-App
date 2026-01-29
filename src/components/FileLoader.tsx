@@ -14,13 +14,14 @@ const FileLoader: React.FC<FileLoaderProps> = ({ onFileSelect, label = 'Load Tra
     };
 
     const isBlue = color === 'blue';
+
     const gradientClass = isBlue
-        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500'
-        : 'bg-gradient-to-r from-fuchsia-500 to-purple-600 hover:from-fuchsia-400 hover:to-purple-500';
+        ? 'bg-gradient-to-r from-neon-blue to-blue-600 hover:from-neon-blue/80 hover:to-blue-500'
+        : 'bg-gradient-to-r from-neon-purple to-purple-600 hover:from-neon-purple/80 hover:to-purple-500';
 
     const shadowClass = isBlue
-        ? 'shadow-[0_0_15px_rgba(6,182,212,0.5)] hover:shadow-[0_0_25px_rgba(6,182,212,0.8)]'
-        : 'shadow-[0_0_15px_rgba(192,38,211,0.5)] hover:shadow-[0_0_25px_rgba(192,38,211,0.8)]';
+        ? 'shadow-[0_0_15px_rgba(77,159,255,0.4)] hover:shadow-[0_0_25px_rgba(77,159,255,0.6)]'
+        : 'shadow-[0_0_15px_rgba(181,55,242,0.4)] hover:shadow-[0_0_25px_rgba(181,55,242,0.6)]';
 
     return (
         <div className="flex flex-col items-center w-full">

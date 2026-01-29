@@ -1,6 +1,8 @@
 export interface Theme {
     name: string;
     label: string;
+    isCustom?: boolean;
+    customVideo?: string; // Data URL or File path
     colors: {
         premiumBlack: string;
         premiumGray: string;
@@ -80,6 +82,39 @@ export const THEMES: Theme[] = [
         }
     }
 ];
+
+// Local Storage Keys
+const CUSTOM_THEMES_KEY = 'blancdj_custom_themes';
+
+export const loadCustomThemes = (): Theme[] => {
+    try {
+        const stored = localStorage.getItem(CUSTOM_THEMES_KEY);
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.error("Failed to load custom themes", e);
+        return [];
+    }
+};
+
+export const saveCustomTheme = (theme: Theme) => {
+    const current = loadCustomThemes();
+    // Update if exists, otherwise append
+    const index = current.findIndex(t => t.name === theme.name);
+    if (index >= 0) {
+        current[index] = theme;
+    } else {
+        current.push(theme);
+    }
+    localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(current));
+    return current;
+};
+
+export const deleteCustomTheme = (themeName: string) => {
+    const current = loadCustomThemes();
+    const updated = current.filter(t => t.name !== themeName);
+    localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(updated));
+    return updated;
+};
 
 export const applyTheme = (theme: Theme) => {
     const root = document.documentElement;

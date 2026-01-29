@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import logo from './assets/logo.png';
-import { THEMES, applyTheme, type Theme } from './themes/themeConfig';
+import { THEMES, applyTheme, loadCustomThemes, deleteCustomTheme, type Theme } from './themes/themeConfig';
 import { Deck } from './audio/Deck';
 import { Crossfader } from './audio/Crossfader';
 import { AudioContextManager } from './audio/AudioContextManager';
@@ -12,13 +12,24 @@ import { useAudioRouter } from './hooks/useAudioRouter';
 import { useMusicQueue } from './hooks/useMusicQueue';
 import QueuePanel from './components/QueuePanel';
 import TutorialModal from './components/TutorialModal';
+import ThemeCreator from './components/ThemeCreator';
 
 const App: React.FC = () => {
   const [started, setStarted] = useState(false);
   const [showRouter, setShowRouter] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showThemeCreator, setShowThemeCreator] = useState(false);
+  const [themeToEdit, setThemeToEdit] = useState<Theme | null>(null);
+
+  const [customThemes, setCustomThemes] = useState<Theme[]>([]);
   const [currentTheme, setCurrentTheme] = useState<Theme>(THEMES[0]);
+
+  // Load Custom Themes on Mount
+  useEffect(() => {
+    const loaded = loadCustomThemes();
+    setCustomThemes(loaded);
+  }, []);
 
   // Apply Theme on Change
   useEffect(() => {
@@ -26,17 +37,27 @@ const App: React.FC = () => {
   }, [currentTheme]);
 
   // Queue Hook
-  const { queue, addToQueue, removeFromQueue } = useMusicQueue();
+  const { queue, addToQueue, addYoutubeToQueue, removeFromQueue, clearQueue, moveItem } = useMusicQueue();
 
   // External Load Triggers
   const [externalLoadA, setExternalLoadA] = useState<{ file: File; ts: number } | null>(null);
   const [externalLoadB, setExternalLoadB] = useState<{ file: File; ts: number } | null>(null);
+  const [externalYoutubeLoadA, setExternalYoutubeLoadA] = useState<{ url: string; ts: number; buffer?: ArrayBuffer; title?: string } | null>(null);
+  const [externalYoutubeLoadB, setExternalYoutubeLoadB] = useState<{ url: string; ts: number; buffer?: ArrayBuffer; title?: string } | null>(null);
 
   const handleLoadFromQueue = (file: File, deckId: 'A' | 'B') => {
     if (deckId === 'A') {
       setExternalLoadA({ file, ts: Date.now() });
     } else {
       setExternalLoadB({ file, ts: Date.now() });
+    }
+  };
+
+  const handleLoadYoutubeFromQueue = (url: string, deckId: 'A' | 'B', preloadedBuffer?: ArrayBuffer, title?: string) => {
+    if (deckId === 'A') {
+      setExternalYoutubeLoadA({ url, ts: Date.now(), buffer: preloadedBuffer, title });
+    } else {
+      setExternalYoutubeLoadB({ url, ts: Date.now(), buffer: preloadedBuffer, title });
     }
   };
 
@@ -111,6 +132,31 @@ const App: React.FC = () => {
     }
   }, [localMuted]);
 
+  // Auto-Queue Logic: Load next track when deck finishes
+  const handleDeckAEnd = () => {
+    const nextItem = queue.find(item => item.targetDeck === 'A');
+    if (nextItem) {
+      if (nextItem.type === 'file' && nextItem.file) {
+        handleLoadFromQueue(nextItem.file, 'A');
+      } else if (nextItem.type === 'youtube' && nextItem.youtubeUrl) {
+        handleLoadYoutubeFromQueue(nextItem.youtubeUrl, 'A', nextItem.preloadedBuffer, nextItem.name);
+      }
+      removeFromQueue(nextItem.id);
+    }
+  };
+
+  const handleDeckBEnd = () => {
+    const nextItem = queue.find(item => item.targetDeck === 'B');
+    if (nextItem) {
+      if (nextItem.type === 'file' && nextItem.file) {
+        handleLoadFromQueue(nextItem.file, 'B');
+      } else if (nextItem.type === 'youtube' && nextItem.youtubeUrl) {
+        handleLoadYoutubeFromQueue(nextItem.youtubeUrl, 'B', nextItem.preloadedBuffer, nextItem.name);
+      }
+      removeFromQueue(nextItem.id);
+    }
+  };
+
   const handleStart = async () => {
     const cm = AudioContextManager.getInstance();
     await cm.resumeContext();
@@ -141,7 +187,7 @@ const App: React.FC = () => {
   if (!started) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white relative overflow-hidden">
-        <AnimatedBackground themeName={currentTheme.name} />
+        <AnimatedBackground themeName={currentTheme.name} customVideo={currentTheme.customVideo} />
 
         <div className="z-10 text-center p-12 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl animate-fade-in-up">
           <h1 className="text-6xl font-black mb-8 tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 drop-shadow-lg">
@@ -159,7 +205,7 @@ const App: React.FC = () => {
               ENTER STUDIO
             </span>
           </button>
-          <p className="mt-6 text-xs text-gray-500 font-mono">AudioContext requires user gesture</p>
+          <p className="mt-6 text-xs text-gray-500 font-mono">Looping is a BETA feature</p>
         </div>
       </div>
     );
@@ -167,7 +213,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen text-white flex flex-col font-sans relative">
-      <AnimatedBackground themeName={currentTheme.name} />
+      <AnimatedBackground themeName={currentTheme.name} customVideo={currentTheme.customVideo} />
 
       <header className="flex-none p-6 flex justify-between items-center z-10 border-b border-white/5 bg-black/20 backdrop-blur-md">
         <div className="flex items-center gap-4">
@@ -235,19 +281,74 @@ const App: React.FC = () => {
             READY TO MIX
           </div>
 
-          {/* Theme Selector */}
-          <select
-            value={currentTheme.name}
-            onChange={(e) => {
-              const selected = THEMES.find(t => t.name === e.target.value);
-              if (selected) setCurrentTheme(selected);
-            }}
-            className="bg-black/40 text-xs text-gray-400 border border-white/10 rounded px-2 py-1 outline-none hover:text-white transition-colors cursor-pointer"
-          >
-            {THEMES.map(t => (
-              <option key={t.name} value={t.name} className="bg-black text-white">{t.label}</option>
-            ))}
-          </select>
+          {/* Theme Selector Area */}
+          <div className="flex items-center gap-2">
+            <select
+              value={currentTheme.name}
+              onChange={(e) => {
+                // Determine if it's a default or custom theme
+                const allThemes = [...THEMES, ...customThemes];
+                const selected = allThemes.find(t => t.name === e.target.value);
+                if (selected) setCurrentTheme(selected);
+              }}
+              className="bg-black/40 text-xs text-gray-400 border border-white/10 rounded px-2 py-1 outline-none hover:text-white transition-colors cursor-pointer max-w-[120px]"
+            >
+              <optgroup label="Default Themes">
+                {THEMES.map(t => (
+                  <option key={t.name} value={t.name} className="bg-black text-white">{t.label}</option>
+                ))}
+              </optgroup>
+              {customThemes.length > 0 && (
+                <optgroup label="Custom Themes">
+                  {customThemes.map(t => (
+                    <option key={t.name} value={t.name} className="bg-black text-white">{t.label}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+
+            {/* Edit Custom Theme Button */}
+            {currentTheme.isCustom && (
+              <button
+                onClick={() => {
+                  setThemeToEdit(currentTheme);
+                  setShowThemeCreator(true);
+                }}
+                className="w-6 h-6 flex items-center justify-center bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white rounded border border-blue-500/20 transition-colors mr-1"
+                title="Edit Custom Theme"
+              >
+                ✎
+              </button>
+            )}
+
+
+
+            {/* Delete Custom Theme Button */}
+            {currentTheme.isCustom && (
+              <button
+                onClick={() => {
+                  if (confirm(`Are you sure you want to delete the theme "${currentTheme.label}"?`)) {
+                    deleteCustomTheme(currentTheme.name);
+                    setCustomThemes(prev => prev.filter(t => t.name !== currentTheme.name));
+                    setCurrentTheme(THEMES[0]); // Reset to default
+                  }
+                }}
+                className="w-6 h-6 flex items-center justify-center bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded border border-red-500/20 transition-colors"
+                title="Delete Custom Theme"
+              >
+                ✕
+              </button>
+            )}
+
+            {/* Create New Theme Button */}
+            <button
+              onClick={() => setShowThemeCreator(true)}
+              className="w-6 h-6 flex items-center justify-center bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white rounded border border-white/10 transition-colors"
+              title="Create Custom Theme"
+            >
+              +
+            </button>
+          </div>
         </div>
       </header>
 
@@ -261,7 +362,14 @@ const App: React.FC = () => {
           {/* DECK A */}
           {deckA && (
             <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
-              <DeckControls deck={deckA} title="DECK A" color="blue" externalLoad={externalLoadA} />
+              <DeckControls
+                deck={deckA}
+                title="DECK A"
+                color="blue"
+                externalLoad={externalLoadA}
+                externalYoutubeLoad={externalYoutubeLoadA}
+                onTrackEnd={handleDeckAEnd}
+              />
             </div>
           )}
 
@@ -277,7 +385,14 @@ const App: React.FC = () => {
           {/* DECK B */}
           {deckB && (
             <div className="flex-1 w-full max-w-2xl transform transition-all duration-500 hover:scale-[1.01]">
-              <DeckControls deck={deckB} title="DECK B" color="purple" externalLoad={externalLoadB} />
+              <DeckControls
+                deck={deckB}
+                title="DECK B"
+                color="purple"
+                externalLoad={externalLoadB}
+                externalYoutubeLoad={externalYoutubeLoadB}
+                onTrackEnd={handleDeckBEnd}
+              />
             </div>
           )}
         </main>
@@ -287,8 +402,12 @@ const App: React.FC = () => {
           <QueuePanel
             queue={queue}
             addToQueue={addToQueue}
+            addYoutubeToQueue={addYoutubeToQueue}
             removeFromQueue={removeFromQueue}
+            clearQueue={clearQueue}
+            moveItem={moveItem}
             onLoadToDeck={handleLoadFromQueue}
+            onLoadYoutubeToDeck={handleLoadYoutubeFromQueue}
             onClose={() => setShowQueue(false)}
           />
         </div>
@@ -299,8 +418,35 @@ const App: React.FC = () => {
       </footer>
 
       {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
+
+      {showThemeCreator && (
+        <ThemeCreator
+          initialTheme={themeToEdit || undefined}
+          onClose={() => {
+            setShowThemeCreator(false);
+            setThemeToEdit(null);
+          }}
+          onSave={(newTheme) => {
+            setCustomThemes(prev => {
+              // If editing existing, replace it. Else add new.
+              const index = prev.findIndex(t => t.name === newTheme.name);
+              if (index >= 0) {
+                const updated = [...prev];
+                updated[index] = newTheme;
+                return updated;
+              }
+              return [...prev, newTheme];
+            });
+            setCurrentTheme(newTheme);
+            setThemeToEdit(null);
+          }}
+        />
+      )}
+
+
     </div>
   );
 };
+
 
 export default App;

@@ -200,7 +200,24 @@ export class Deck {
         // But we update startedAt on play() to handle offset
         // startedAt = now - (pausedAt / rate)
         // so current "track time" = (now - startedAt) * rate
-        return (now - this.startedAt) * this.playbackRate;
+        let currentTime = (now - this.startedAt) * this.playbackRate;
+
+        // If loop is active, wrap the time within the loop range
+        if (this.loopStartPoint !== null && this.loopEndPoint !== null &&
+            this.sourceNode && this.sourceNode instanceof AudioBufferSourceNode &&
+            this.sourceNode.loop) {
+
+            const loopDuration = this.loopEndPoint - this.loopStartPoint;
+
+            // If we're past the loop end, calculate position within loop
+            if (currentTime >= this.loopEndPoint) {
+                // Calculate how far past the loop start we are
+                const timeIntoLoop = (currentTime - this.loopStartPoint) % loopDuration;
+                currentTime = this.loopStartPoint + timeIntoLoop;
+            }
+        }
+
+        return currentTime;
     }
 
     public seek(time: number) {
@@ -274,30 +291,44 @@ export class Deck {
     private loopEndPoint: number | null = null;
 
     public setLoopIn() {
-        if (!this.sourceNode || !(this.sourceNode instanceof AudioBufferSourceNode)) return;
+        // Allow setting loop points even when paused
+        if (!this.buffer) return;
 
         const currentTime = this.getCurrentTime();
         this.loopStartPoint = currentTime;
         console.log('Loop In set at:', this.loopStartPoint);
+
+        // If currently playing, engage the loop immediately
+        if (this.sourceNode && this.sourceNode instanceof AudioBufferSourceNode) {
+            // Just set the start point, wait for OUT to engage full loop
+        }
     }
 
     public setLoopOut() {
-        if (!this.sourceNode || !(this.sourceNode instanceof AudioBufferSourceNode)) return;
+        // Allow setting loop points even when paused
+        if (!this.buffer) return;
         const currentTime = this.getCurrentTime();
 
         if (this.loopStartPoint !== null && currentTime > this.loopStartPoint) {
             this.loopEndPoint = currentTime;
-            this.engageLoop();
             console.log('Loop Out set at:', this.loopEndPoint);
+
+            // If currently playing, engage the loop immediately
+            if (this.sourceNode && this.sourceNode instanceof AudioBufferSourceNode) {
+                this.engageLoop();
+            }
         }
     }
 
     public exitLoop() {
+        // Disable loop on current source if playing
         if (this.sourceNode && this.sourceNode instanceof AudioBufferSourceNode) {
             this.sourceNode.loop = false;
         }
+        // Clear loop points so they don't re-engage on next play
         this.loopStartPoint = null;
         this.loopEndPoint = null;
+        console.log('Loop exited and cleared');
     }
 
     private engageLoop() {

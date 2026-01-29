@@ -12,8 +12,8 @@ const VinylPlatter: React.FC<VinylPlatterProps> = ({ isPlaying, artwork, rpm = 3
     const requestRef = useRef<number>(0);
     const rotationRef = useRef<number>(0);
 
-    const glowColor = color === 'blue' ? 'rgba(59,130,246,0.5)' : 'rgba(168,85,247,0.5)';
-    const neonColor = color === 'blue' ? '#3b82f6' : '#a855f7';
+    const glowColor = color === 'blue' ? 'color-mix(in srgb, var(--color-neon-blue), transparent 50%)' : 'color-mix(in srgb, var(--color-neon-purple), transparent 50%)';
+    const neonColor = color === 'blue' ? 'var(--color-neon-blue)' : 'var(--color-neon-purple)';
 
     useEffect(() => {
         let lastTime = performance.now();
@@ -69,11 +69,17 @@ const VinylPlatter: React.FC<VinylPlatterProps> = ({ isPlaying, artwork, rpm = 3
                 <div className="absolute inset-0 rounded-full bg-gradient-to-bl from-white/5 to-transparent pointer-events-none z-10 opacity-30"></div>
 
                 {/* Label */}
-                <div className="absolute w-24 h-24 rounded-full bg-white flex items-center justify-center border-4 border-gray-800 shadow-2xl z-20 overflow-hidden box-border">
+                <div className="absolute w-24 h-24 rounded-full flex items-center justify-center border-4 border-gray-800 shadow-2xl z-20 overflow-hidden box-border"
+                    style={{ background: 'white' }}
+                >
                     {artwork ? (
                         <div className="w-full h-full bg-cover bg-center animate-spin-slow" style={{ backgroundImage: `url(${artwork})` }}></div>
                     ) : (
-                        <div className={`w-full h-full bg-gradient-to-br ${color === 'blue' ? 'from-slate-900 to-indigo-900' : 'from-slate-900 to-fuchsia-900'} flex items-center justify-center text-center p-1`}>
+                        <div className="w-full h-full flex items-center justify-center text-center p-1"
+                            style={{
+                                background: `linear-gradient(to bottom right, var(--color-premium-black), color-mix(in srgb, ${neonColor}, black 60%))`
+                            }}
+                        >
                             <div className="text-[8px] font-black text-white/80 tracking-widest border-y border-white/20 py-1 uppercase scale-90">
                                 FLUX<br />AUDIO
                             </div>

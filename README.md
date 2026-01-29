@@ -36,7 +36,13 @@
 ### 📂 Music Management
 - **Integrated Queue**: Sidebar playlist management.
 - **Drag & Drop**: Easily reorder tracks or add new files.
+- **YouTube Integration**: Search and play YouTube tracks directly. Includes offline support via `yt-dlp` (bundled).
 - **Instant Load**: One-click loading to Deck A or Deck B.
+
+### 🎨 Custom Themes (Beta)
+- **Video Backdrops**: Upload your own MP4 loops as dynamic backgrounds.
+- **Theme Creator**: Customize deck colors (Neon Blue/Purple, Custom) and saving your personal presets.
+- **Persistence**: Your custom themes and videos are saved automatically.
 
 ## 🛠️ Technology Stack
 
