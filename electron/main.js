@@ -1,4 +1,3 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer } from "electron";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -7,12 +6,128 @@ import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 
 const require = createRequire(import.meta.url);
+const { app, BrowserWindow, ipcMain, desktopCapturer } = require("electron");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const execFilePromise = promisify(execFile);
+const localPython = process.platform === "win32"
+    ? path.join(__dirname, "../.venv/Scripts/python.exe")
+    : path.join(__dirname, "../.venv/bin/python");
+const pythonCommand = process.env.PYTHON ||
+    (fs.existsSync(localPython) ? localPython : process.platform === "win32" ? "python" : "python3");
+let mainWindow = null;
+
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch("disable-gpu");
 
 // Cache for video metadata to reduce API calls
 const videoCache = new Map();
 const CACHE_EXPIRY = 3600000; // 1 hour in milliseconds
+
+function getYoutubeVideoId(input) {
+    const raw = input.trim();
+
+    if (/^[\w-]{11}$/.test(raw)) {
+        return raw;
+    }
+
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+
+    if (host === "youtu.be") {
+        return url.pathname.split("/").filter(Boolean)[0] || null;
+    }
+
+    if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+        const watchId = url.searchParams.get("v");
+        if (watchId) {
+            return watchId;
+        }
+
+        const [, route, id] = url.pathname.split("/");
+        if (["shorts", "embed", "live"].includes(route)) {
+            return id || null;
+        }
+    }
+
+    return null;
+}
+
+function normalizeYoutubeUrl(input) {
+    const videoId = getYoutubeVideoId(input);
+
+    if (!videoId || !/^[\w-]{11}$/.test(videoId)) {
+        throw new Error("Invalid YouTube URL or video ID");
+    }
+
+    return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
+function getBackendScriptPath() {
+    return app.isPackaged
+        ? path.join(process.resourcesPath, "backend", "server.py")
+        : path.join(__dirname, "../backend/server.py");
+}
+
+function getStemRequirementsPath() {
+    return app.isPackaged
+        ? path.join(process.resourcesPath, "backend", "requirements-stems.txt")
+        : path.join(__dirname, "../backend/requirements-stems.txt");
+}
+
+function getOptionalPackageBinary(packageName) {
+    try {
+        const packageExport = require(packageName);
+        const binaryPath = typeof packageExport === "string" ? packageExport : packageExport?.path;
+        if (!binaryPath) {
+            return null;
+        }
+
+        const unpackedPath = binaryPath.replace("app.asar", "app.asar.unpacked");
+        return fs.existsSync(unpackedPath) ? unpackedPath : binaryPath;
+    } catch {
+        return null;
+    }
+}
+
+function buildBackendEnv() {
+    const env = { ...process.env };
+    const ffmpegPath = getOptionalPackageBinary("ffmpeg-static");
+    const ffprobePath = getOptionalPackageBinary("ffprobe-static");
+    const binaryDirs = [ffmpegPath, ffprobePath]
+        .filter(Boolean)
+        .map((binaryPath) => path.dirname(binaryPath));
+    const uniqueBinaryDirs = [...new Set(binaryDirs)];
+
+    if (uniqueBinaryDirs.length > 0) {
+        env.PATH = [...uniqueBinaryDirs, env.PATH || ""].filter(Boolean).join(path.delimiter);
+    }
+
+    if (ffmpegPath) {
+        env.BLANCDJ_FFMPEG_PATH = ffmpegPath;
+    }
+
+    if (ffprobePath) {
+        env.BLANCDJ_FFPROBE_PATH = ffprobePath;
+    }
+
+    return env;
+}
+
+function formatBackendError(result, fallbackMessage) {
+    const messageParts = [
+        result?.error,
+        result?.install_hint,
+        result?.details ? `Details: ${result.details}` : null
+    ].filter(Boolean);
+
+    return messageParts.join("\n") || fallbackMessage;
+}
+
+function getYoutubeDownloadPath(videoId) {
+    const downloadsDir = path.join(__dirname, "../downloads");
+    fs.mkdirSync(downloadsDir, { recursive: true });
+    return path.join(downloadsDir, `${videoId || Date.now()}-yt-dlp.mp3`);
+}
 
 function createWindow() {
     const win = new BrowserWindow({
@@ -21,7 +136,7 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, "preload.js"),
+            preload: path.join(__dirname, "preload.cjs"),
             zoomFactor: 0.7,
             webSecurity: false
         },
@@ -30,10 +145,17 @@ function createWindow() {
 
     if (!app.isPackaged) {
         win.loadURL("http://localhost:5173");
-        win.webContents.openDevTools();
+        if (process.env.OPEN_DEVTOOLS === "1") {
+            win.webContents.openDevTools();
+        }
     } else {
         win.loadFile(path.join(__dirname, "../dist/index.html"));
     }
+
+    mainWindow = win;
+    win.on("closed", () => {
+        mainWindow = null;
+    });
 
     return win;
 }
@@ -41,10 +163,12 @@ function createWindow() {
 app.whenReady().then(async () => {
 
     // Spawn Python Server
-    const pythonScript = path.join(__dirname, "../backend/server.py");
+    const pythonScript = getBackendScriptPath();
     console.log("[Python] Spawning server at:", pythonScript);
 
-    let pythonProcess = spawn("python", [pythonScript]);
+    let pythonProcess = spawn(pythonCommand, [pythonScript], {
+        env: buildBackendEnv()
+    });
 
     pythonProcess.stdout.on('data', (data) => {
         console.log(`[Python] ${data}`);
@@ -77,6 +201,66 @@ app.whenReady().then(async () => {
             name: source.name,
             thumbnail: source.thumbnail.toDataURL()
         }));
+    });
+
+    ipcMain.handle("ANALYZE_STEMS", async (_, filePath) => {
+        if (!filePath || typeof filePath !== "string") {
+            throw new Error("A local audio file path is required for stem analysis.");
+        }
+
+        const response = await fetch("http://127.0.0.1:5000/stems/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ file_path: filePath })
+        });
+
+        const responseText = await response.text();
+        let result = {};
+        try {
+            result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            result = { error: responseText || response.statusText };
+        }
+
+        if (!response.ok) {
+            throw new Error(formatBackendError(result, "Stem analysis failed"));
+        }
+
+        return result;
+    });
+
+    ipcMain.handle("READ_AUDIO_FILE", async (_, filePath) => {
+        if (!filePath || typeof filePath !== "string") {
+            throw new Error("A file path is required.");
+        }
+
+        const buffer = fs.readFileSync(filePath);
+        return new Uint8Array(buffer);
+    });
+
+    ipcMain.handle("INSTALL_STEM_REQUIREMENTS", async () => {
+        const requirementsPath = getStemRequirementsPath();
+
+        if (!fs.existsSync(requirementsPath)) {
+            throw new Error(`Stem requirements file not found: ${requirementsPath}`);
+        }
+
+        const { stdout, stderr } = await execFilePromise(pythonCommand, [
+            "-m",
+            "pip",
+            "install",
+            "-r",
+            requirementsPath
+        ], {
+            maxBuffer: 20 * 1024 * 1024,
+            env: buildBackendEnv()
+        });
+
+        return {
+            success: true,
+            stdout,
+            stderr
+        };
     });
 
     // Enhanced YouTube search with caching and error handling
@@ -208,18 +392,12 @@ app.whenReady().then(async () => {
                 throw new Error(`Invalid URL: expected string, got ${typeof input}`);
             }
 
-            let url = input.trim();
-            // Normalize URL
-            if (!url.startsWith("http")) {
-                url = `https://www.youtube.com/watch?v=${url.split("&")[0]}`;
-            } else if (url.includes("&list=")) {
-                url = url.split("&list=")[0];
-            }
+            const url = normalizeYoutubeUrl(input);
 
             console.log("[YouTube] Normalized URL:", url);
 
             // Extract video ID for progress updates
-            const videoId = url.match(/(?:v=|\/)([\w-]{11})/)?.[1];
+            const videoId = getYoutubeVideoId(url);
 
             // Notify renderer about download start
             event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", {
@@ -253,19 +431,12 @@ app.whenReady().then(async () => {
                 // Read the file buffer
                 const buffer = fs.readFileSync(result.file_path);
 
-                // Auto-cleanup: Delete file after reading
-                try {
-                    fs.unlinkSync(result.file_path);
-                    console.log("[YouTube] Cleaned up temporary file:", result.file_path);
-                } catch (cleanupError) {
-                    console.warn("[YouTube] Failed to cleanup temp file:", cleanupError.message);
-                }
-
                 event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", { videoId, status: "complete", progress: 100 });
 
                 return {
                     buffer: new Uint8Array(buffer),
-                    title: result.title || "YouTube Track"
+                    title: result.title || "YouTube Track",
+                    sourceFilePath: result.file_path
                 };
 
             } catch (pythonError) {
@@ -276,13 +447,13 @@ app.whenReady().then(async () => {
                 console.log("[YouTube] Falling back to yt-dlp...");
 
                 // Resolve yt-dlp path
-                let ytDlpPath = 'yt-dlp'; // Default to PATH
-                if (app.isPackaged) {
+                let ytDlpPath = 'yt-dlp'; // Default to PATH on Linux/macOS
+                if (app.isPackaged && process.platform === "win32") {
                     const bundledPath = path.join(process.resourcesPath, 'yt-dlp', 'yt-dlp.exe');
                     if (fs.existsSync(bundledPath)) {
                         ytDlpPath = bundledPath;
                     }
-                } else {
+                } else if (!app.isPackaged && process.platform === "win32") {
                     const localPath = path.join(__dirname, '../yt-dlp/yt-dlp.exe');
                     if (fs.existsSync(localPath)) {
                         ytDlpPath = localPath;
@@ -297,7 +468,12 @@ app.whenReady().then(async () => {
                     console.warn("[YouTube] Could not fetch title:", e.message);
                 }
 
-                const { stdout } = await execFilePromise(ytDlpPath, [
+                const fallbackFilePath = getYoutubeDownloadPath(videoId);
+                if (fs.existsSync(fallbackFilePath)) {
+                    fs.unlinkSync(fallbackFilePath);
+                }
+
+                await execFilePromise(ytDlpPath, [
                     url,
                     '-f', 'bestaudio/best',
                     '--extract-audio',
@@ -305,20 +481,23 @@ app.whenReady().then(async () => {
                     '--audio-quality', '0',
                     '--no-playlist',
                     '--no-warnings',
-                    '-o', '-'
+                    '-o', fallbackFilePath
                 ], {
-                    maxBuffer: 100 * 1024 * 1024,
-                    encoding: null
+                    maxBuffer: 20 * 1024 * 1024
                 });
 
-                const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
+                const buffer = fs.readFileSync(fallbackFilePath);
 
                 if (buffer.length < 1000) {
                     throw new Error("yt-dlp buffer too small");
                 }
 
                 event.sender.send("YOUTUBE_DOWNLOAD_PROGRESS", { videoId, status: "complete", progress: 100 });
-                return { buffer, title: videoTitle };
+                return {
+                    buffer: new Uint8Array(buffer),
+                    title: videoTitle,
+                    sourceFilePath: fallbackFilePath
+                };
             }
 
         } catch (error) {

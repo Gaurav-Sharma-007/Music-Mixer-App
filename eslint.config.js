@@ -6,7 +6,18 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores([
+    'node_modules/',
+    '.venv/',
+    'venv/',
+    'dist/',
+    'dist-electron/',
+    'stems/',
+    'downloads/',
+    'yt-dlp/',
+    '**/__pycache__/',
+    '*-player-script.js',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

@@ -14,6 +14,8 @@ import QueuePanel from './components/QueuePanel';
 import TutorialModal from './components/TutorialModal';
 import ThemeCreator from './components/ThemeCreator';
 
+type StemInstallStatus = 'idle' | 'installing' | 'ready' | 'error';
+
 const App: React.FC = () => {
   const [started, setStarted] = useState(false);
   const [showRouter, setShowRouter] = useState(false);
@@ -21,15 +23,11 @@ const App: React.FC = () => {
   const [showTutorial, setShowTutorial] = useState(false);
   const [showThemeCreator, setShowThemeCreator] = useState(false);
   const [themeToEdit, setThemeToEdit] = useState<Theme | null>(null);
+  const [stemInstallStatus, setStemInstallStatus] = useState<StemInstallStatus>('idle');
+  const [stemInstallMessage, setStemInstallMessage] = useState('');
 
-  const [customThemes, setCustomThemes] = useState<Theme[]>([]);
+  const [customThemes, setCustomThemes] = useState<Theme[]>(() => loadCustomThemes());
   const [currentTheme, setCurrentTheme] = useState<Theme>(THEMES[0]);
-
-  // Load Custom Themes on Mount
-  useEffect(() => {
-    const loaded = loadCustomThemes();
-    setCustomThemes(loaded);
-  }, []);
 
   // Apply Theme on Change
   useEffect(() => {
@@ -42,8 +40,8 @@ const App: React.FC = () => {
   // External Load Triggers
   const [externalLoadA, setExternalLoadA] = useState<{ file: File; ts: number } | null>(null);
   const [externalLoadB, setExternalLoadB] = useState<{ file: File; ts: number } | null>(null);
-  const [externalYoutubeLoadA, setExternalYoutubeLoadA] = useState<{ url: string; ts: number; buffer?: ArrayBuffer; title?: string } | null>(null);
-  const [externalYoutubeLoadB, setExternalYoutubeLoadB] = useState<{ url: string; ts: number; buffer?: ArrayBuffer; title?: string } | null>(null);
+  const [externalYoutubeLoadA, setExternalYoutubeLoadA] = useState<{ url: string; ts: number; buffer?: ArrayBuffer; title?: string; sourceFilePath?: string } | null>(null);
+  const [externalYoutubeLoadB, setExternalYoutubeLoadB] = useState<{ url: string; ts: number; buffer?: ArrayBuffer; title?: string; sourceFilePath?: string } | null>(null);
 
   const handleLoadFromQueue = (file: File, deckId: 'A' | 'B') => {
     if (deckId === 'A') {
@@ -53,11 +51,11 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLoadYoutubeFromQueue = (url: string, deckId: 'A' | 'B', preloadedBuffer?: ArrayBuffer, title?: string) => {
+  const handleLoadYoutubeFromQueue = (url: string, deckId: 'A' | 'B', preloadedBuffer?: ArrayBuffer, title?: string, sourceFilePath?: string) => {
     if (deckId === 'A') {
-      setExternalYoutubeLoadA({ url, ts: Date.now(), buffer: preloadedBuffer, title });
+      setExternalYoutubeLoadA({ url, ts: Date.now(), buffer: preloadedBuffer, title, sourceFilePath });
     } else {
-      setExternalYoutubeLoadB({ url, ts: Date.now(), buffer: preloadedBuffer, title });
+      setExternalYoutubeLoadB({ url, ts: Date.now(), buffer: preloadedBuffer, title, sourceFilePath });
     }
   };
 
@@ -90,6 +88,8 @@ const App: React.FC = () => {
   // Auto-mute local when routing is strictly active (User Request Fix)
   useEffect(() => {
     if (selectedDeviceIds.size > 0) {
+      // Sync local monitoring with active external routing.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalMuted(true);
     }
   }, [selectedDeviceIds.size]);
@@ -118,9 +118,10 @@ const App: React.FC = () => {
     localGainRef.current = localGain;
 
     // Set Stream State
+    // Expose the Web Audio stream created during graph setup to the router hook.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMainStream(streamDest.stream);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deckA, deckB, crossfader]);
 
   // Handle Local Muting
@@ -139,7 +140,7 @@ const App: React.FC = () => {
       if (nextItem.type === 'file' && nextItem.file) {
         handleLoadFromQueue(nextItem.file, 'A');
       } else if (nextItem.type === 'youtube' && nextItem.youtubeUrl) {
-        handleLoadYoutubeFromQueue(nextItem.youtubeUrl, 'A', nextItem.preloadedBuffer, nextItem.name);
+        handleLoadYoutubeFromQueue(nextItem.youtubeUrl, 'A', nextItem.preloadedBuffer, nextItem.name, nextItem.sourceFilePath);
       }
       removeFromQueue(nextItem.id);
     }
@@ -151,7 +152,7 @@ const App: React.FC = () => {
       if (nextItem.type === 'file' && nextItem.file) {
         handleLoadFromQueue(nextItem.file, 'B');
       } else if (nextItem.type === 'youtube' && nextItem.youtubeUrl) {
-        handleLoadYoutubeFromQueue(nextItem.youtubeUrl, 'B', nextItem.preloadedBuffer, nextItem.name);
+        handleLoadYoutubeFromQueue(nextItem.youtubeUrl, 'B', nextItem.preloadedBuffer, nextItem.name, nextItem.sourceFilePath);
       }
       removeFromQueue(nextItem.id);
     }
@@ -161,6 +162,28 @@ const App: React.FC = () => {
     const cm = AudioContextManager.getInstance();
     await cm.resumeContext();
     setStarted(true);
+  };
+
+  const handleInstallStemRequirements = async () => {
+    if (!window.electronAPI?.installStemRequirements) {
+      setStemInstallStatus('error');
+      setStemInstallMessage('Electron only');
+      return;
+    }
+
+    setStemInstallStatus('installing');
+    setStemInstallMessage('Downloading');
+
+    try {
+      await window.electronAPI.installStemRequirements();
+      setStemInstallStatus('ready');
+      setStemInstallMessage('AI stems ready');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Install failed';
+      console.error('Stem requirements install failed:', error);
+      setStemInstallStatus('error');
+      setStemInstallMessage(message);
+    }
   };
 
   // Audio Router Overlay Render
@@ -225,6 +248,32 @@ const App: React.FC = () => {
           </div>
           {started && (
             <>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleInstallStemRequirements}
+                  disabled={stemInstallStatus === 'installing'}
+                  title="Download and install optional AI stem dependencies"
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider border transition-all ${stemInstallStatus === 'installing'
+                    ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-200 cursor-wait'
+                    : stemInstallStatus === 'ready'
+                      ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200 hover:bg-emerald-500/25'
+                      : stemInstallStatus === 'error'
+                        ? 'bg-red-500/15 border-red-400/40 text-red-200 hover:bg-red-500/25'
+                        : 'bg-cyan-500/15 border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/25'
+                    }`}
+                >
+                  {stemInstallStatus === 'installing' ? 'Installing AI' : stemInstallStatus === 'ready' ? 'AI Stems Ready' : 'Install AI Stems'}
+                </button>
+                {stemInstallMessage && (
+                  <span
+                    className={`max-w-36 truncate text-[10px] font-mono ${stemInstallStatus === 'error' ? 'text-red-300' : 'text-gray-500'}`}
+                    title={stemInstallMessage}
+                  >
+                    {stemInstallMessage}
+                  </span>
+                )}
+              </div>
+
               <button
                 onClick={() => {
                   const ctx = AudioContextManager.getInstance().getContext();

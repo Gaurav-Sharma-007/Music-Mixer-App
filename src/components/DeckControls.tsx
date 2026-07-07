@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Deck } from '../audio/Deck';
+import { Deck, type StemArrayBuffers, type StemEnabledState, type StemName } from '../audio/Deck';
 import VinylPlatter from './VinylPlatter';
 import SourceSelector from './SourceSelector';
 import { EQ_PRESETS, type EQPresetName } from '../audio/EQPresets';
@@ -9,9 +9,77 @@ interface DeckControlsProps {
     title: string;
     color: 'blue' | 'purple';
     externalLoad?: { file: File; ts: number } | null;
-    externalYoutubeLoad?: { url: string; ts: number; buffer?: ArrayBuffer; title?: string } | null;
+    externalYoutubeLoad?: { url: string; ts: number; buffer?: ArrayBuffer; title?: string; sourceFilePath?: string } | null;
     onTrackEnd?: () => void;
 }
+
+interface YoutubeSearchResult {
+    id: string;
+    title: string;
+    channel: string;
+    thumbnail: string;
+}
+
+interface YoutubeLoadObject {
+    buffer: Uint8Array;
+    title: string;
+    sourceFilePath?: string;
+}
+
+type YoutubeLoadResponse = ArrayBuffer | Uint8Array | YoutubeLoadObject;
+type StemStatus = 'idle' | 'analyzing' | 'ready' | 'error';
+type StemPreset = 'all' | 'acapella' | 'instrumental' | 'drums';
+type DesktopCaptureConstraints = {
+    audio: {
+        mandatory: {
+            chromeMediaSource: 'desktop';
+            chromeMediaSourceId: string;
+        };
+        echoCancellation: false;
+        autoGainControl: false;
+        noiseSuppression: false;
+        googAutoGainControl: false;
+        channelCount: number;
+    };
+    video: {
+        mandatory: {
+            chromeMediaSource: 'desktop';
+            chromeMediaSourceId: string;
+            maxFrameRate: number;
+        };
+    };
+};
+
+const STEM_NAMES: StemName[] = ['vocals', 'drums', 'bass', 'other'];
+const ALL_STEMS: StemEnabledState = {
+    vocals: true,
+    drums: true,
+    bass: true,
+    other: true
+};
+const STEM_LABELS: Record<StemName, string> = {
+    vocals: 'VOCAL',
+    drums: 'DRUM',
+    bass: 'BASS',
+    other: 'INST'
+};
+const STEM_ACTIVE_CLASSES: Record<StemName, string> = {
+    vocals: 'bg-pink-500/25 border-pink-300/60 text-pink-100',
+    drums: 'bg-amber-500/25 border-amber-300/60 text-amber-100',
+    bass: 'bg-emerald-500/25 border-emerald-300/60 text-emerald-100',
+    other: 'bg-sky-500/25 border-sky-300/60 text-sky-100'
+};
+
+const toAudioArrayBuffer = (data: ArrayBuffer | Uint8Array): ArrayBuffer => {
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+};
+
+const isYoutubeLoadObject = (response: YoutubeLoadResponse): response is YoutubeLoadObject => {
+    return response !== null && typeof response === 'object' && 'buffer' in response && 'title' in response;
+};
 
 const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externalLoad, externalYoutubeLoad, onTrackEnd }) => {
     const [isPlaying, setIsPlaying] = useState(false);
@@ -22,6 +90,10 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
     const [trackName, setTrackName] = useState('No Track Loaded');
     const [isLoaded, setIsLoaded] = useState(false);
     const [inputType, setInputType] = useState<'file' | 'external' | 'youtube'>('file');
+    const [sourceFilePath, setSourceFilePath] = useState<string | null>(null);
+    const [stemStatus, setStemStatus] = useState<StemStatus>('idle');
+    const [stemMessage, setStemMessage] = useState('');
+    const [stemMix, setStemMix] = useState<StemEnabledState>({ ...ALL_STEMS });
     const [sampleLoaded, setSampleLoaded] = useState([false, false, false, false]);
     const [showSourceSelector, setShowSourceSelector] = useState(false);
     const [showLoadMenu, setShowLoadMenu] = useState(false);
@@ -37,8 +109,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
     // Search States
     const [apiKey, setApiKey] = useState(localStorage.getItem('yt_api_key') || '');
     const [apiKeyInput, setApiKeyInput] = useState('');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [searchResults, setSearchResults] = useState<YoutubeSearchResult[]>([]);
 
     // Track end detection ref
     const trackEndHandledRef = React.useRef(false);
@@ -46,11 +117,48 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
     const accentColor = color === 'blue' ? 'text-neon-blue' : 'text-neon-purple';
     const borderColor = color === 'blue' ? 'border-neon-blue/30' : 'border-neon-purple/30';
 
+    const resetStemControls = () => {
+        const nextMix = { ...ALL_STEMS };
+        setStemStatus('idle');
+        setStemMessage('');
+        setStemMix(nextMix);
+        deck.setStemMix(nextMix);
+    };
+
+    const applyStemMix = (nextMix: StemEnabledState) => {
+        setStemMix(nextMix);
+        deck.setStemMix(nextMix);
+    };
+
+    const toggleStem = (stem: StemName) => {
+        if (stemStatus !== 'ready') return;
+
+        applyStemMix({
+            ...stemMix,
+            [stem]: !stemMix[stem]
+        });
+    };
+
+    const handleStemPreset = (preset: StemPreset) => {
+        if (stemStatus !== 'ready') return;
+
+        const presets: Record<StemPreset, StemEnabledState> = {
+            all: { ...ALL_STEMS },
+            acapella: { vocals: true, drums: false, bass: false, other: false },
+            instrumental: { vocals: false, drums: true, bass: true, other: true },
+            drums: { vocals: false, drums: true, bass: false, other: false }
+        };
+
+        applyStemMix(presets[preset]);
+    };
+
     // Handle External File Load (Queue)
     React.useEffect(() => {
         if (externalLoad) {
             handleFileSelect(externalLoad.file);
         }
+        // Queue loads are timestamped trigger objects; helper identity should not retrigger them.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [externalLoad]);
 
     // Handle External YouTube Load (Queue)
@@ -58,12 +166,14 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         if (externalYoutubeLoad) {
             if (externalYoutubeLoad.buffer) {
                 // Use pre-loaded buffer for instant playback
-                handlePreloadedYoutube(externalYoutubeLoad.buffer, externalYoutubeLoad.url, externalYoutubeLoad.title);
+                handlePreloadedYoutube(externalYoutubeLoad.buffer, externalYoutubeLoad.url, externalYoutubeLoad.title, externalYoutubeLoad.sourceFilePath);
             } else {
                 // Fallback to regular loading - pass the URL string directly
                 handleYoutubeSubmit(externalYoutubeLoad.url);
             }
         }
+        // Queue loads are timestamped trigger objects; helper identity should not retrigger them.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [externalYoutubeLoad]);
 
     // Close load menu when clicking outside
@@ -83,10 +193,12 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         };
     }, [showLoadMenu]);
 
-    const handlePreloadedYoutube = async (arrayBuffer: ArrayBuffer, url: string, videoTitle?: string) => {
+    const handlePreloadedYoutube = async (arrayBuffer: ArrayBuffer, url: string, videoTitle?: string, downloadedSourcePath?: string) => {
         try {
             console.log('[Deck] Using pre-loaded buffer for instant playback');
             setTrackName('Loading from queue...');
+            setSourceFilePath(downloadedSourcePath || null);
+            resetStemControls();
 
             // Use provided title or extract from URL as fallback
             let title = videoTitle || 'YouTube Track';
@@ -133,17 +245,19 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                 console.log("Received response from Main (RAW):", response);
                 console.log("Type of response:", typeof response);
 
-                let rawBuffer: any;
+                const youtubeResponse = response as YoutubeLoadResponse;
+                let rawBuffer: ArrayBuffer | Uint8Array;
                 let title = 'YouTube Track';
+                let downloadedSourcePath: string | null = null;
 
                 // Check if response is the new object format { buffer, title }
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                if (response && (response as any).buffer && (response as any).title) {
+                if (isYoutubeLoadObject(youtubeResponse)) {
                     console.log("DETECTED NEW FORMAT: Object with buffer and title");
-                    rawBuffer = (response as any).buffer;
+                    rawBuffer = youtubeResponse.buffer;
+                    downloadedSourcePath = youtubeResponse.sourceFilePath || null;
 
-                    if ((response as any).title && (response as any).title !== 'YouTube Track') {
-                        title = (response as any).title;
+                    if (youtubeResponse.title && youtubeResponse.title !== 'YouTube Track') {
+                        title = youtubeResponse.title;
                         console.log("SETTING TITLE TO:", title);
                     } else {
                         console.log("Title was empty or default");
@@ -151,19 +265,19 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                 } else {
                     console.log("DETECTED OLD FORMAT: Raw buffer/Uint8Array");
                     // Fallback for old format
-                    rawBuffer = response;
+                    rawBuffer = youtubeResponse;
                 }
 
                 // Electron IPC sends Buffer as Uint8Array. 
                 // deck.load expects ArrayBuffer. 
-                // If rawBuffer is Uint8Array (which has .buffer), use that.
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const arrayBuffer = (rawBuffer as any).buffer ? (rawBuffer as any).buffer : rawBuffer;
+                const arrayBuffer = toAudioArrayBuffer(rawBuffer);
 
                 if (arrayBuffer.byteLength === 0) {
                     throw new Error("Received empty audio buffer");
                 }
 
+                setSourceFilePath(downloadedSourcePath);
+                resetStemControls();
                 await deck.load(arrayBuffer);
                 setTrackName(title);
                 setDuration(deck.getDuration());
@@ -217,7 +331,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         }
     };
 
-    const handleResultClick = (result: any) => {
+    const handleResultClick = (result: YoutubeSearchResult) => {
         console.log("[Deck] Search Result Clicked:", result);
         if (result && result.id) {
             setLoadingVideoId(result.id); // Set loading state for this video
@@ -227,6 +341,49 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
         } else {
             console.error("[Deck] Invalid result object (missing id):", result);
             alert("Could not load video: Invalid ID");
+        }
+    };
+
+    const handleAnalyzeStems = async () => {
+        const analyzeStems = window.electronAPI?.analyzeStems;
+        const readAudioFile = window.electronAPI?.readAudioFile;
+
+        if (!sourceFilePath || !analyzeStems || !readAudioFile) {
+            setStemStatus('error');
+            setStemMessage('LOCAL SOURCE REQUIRED');
+            return;
+        }
+
+        setStemStatus('analyzing');
+        setStemMessage('ANALYZING OFFLINE');
+
+        try {
+            const result = await analyzeStems(sourceFilePath);
+            const stemBuffers = {} as StemArrayBuffers;
+
+            await Promise.all(
+                STEM_NAMES.map(async (stem) => {
+                    const stemFile = await readAudioFile(result.stems[stem]);
+                    stemBuffers[stem] = toAudioArrayBuffer(stemFile);
+                })
+            );
+
+            await deck.loadStems(stemBuffers);
+
+            const nextMix = { ...ALL_STEMS };
+            setStemMix(nextMix);
+            deck.setStemMix(nextMix);
+            setDuration(deck.getDuration());
+            setStemStatus('ready');
+            setStemMessage(result.cached ? 'CACHED STEMS' : 'STEMS READY');
+        } catch (error) {
+            const rawMessage = error instanceof Error ? error.message : 'Stem analysis failed';
+            const message = rawMessage
+                .replace(/^Error invoking remote method 'ANALYZE_STEMS':\s*(Error:\s*)?/i, '')
+                .trim();
+            console.error('Stem analysis failed', error);
+            setStemStatus('error');
+            setStemMessage(message.toUpperCase().slice(0, 140));
         }
     };
 
@@ -298,6 +455,9 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
     const handleFileSelect = async (file: File) => {
         try {
             setTrackName('Loading...');
+            const filePath = window.electronAPI?.getFilePath?.(file) || null;
+            setSourceFilePath(filePath);
+            resetStemControls();
             const arrayBuffer = await file.arrayBuffer();
             await deck.load(arrayBuffer);
             setTrackName(file.name);
@@ -319,7 +479,9 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
     const handleSourceSelected = async (sourceId: string) => {
         setShowSourceSelector(false);
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({
+            setSourceFilePath(null);
+            resetStemControls();
+            const desktopConstraints: DesktopCaptureConstraints = {
                 audio: {
                     mandatory: {
                         chromeMediaSource: 'desktop',
@@ -330,7 +492,7 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                     noiseSuppression: false,
                     googAutoGainControl: false,
                     channelCount: 2
-                } as any,
+                },
                 video: {
                     mandatory: {
                         chromeMediaSource: 'desktop',
@@ -338,7 +500,8 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                         maxFrameRate: 1
                     }
                 }
-            } as any);
+            };
+            const stream = await navigator.mediaDevices.getUserMedia(desktopConstraints as unknown as MediaStreamConstraints);
 
             const audioTrack = stream.getAudioTracks()[0];
             if (!audioTrack) {
@@ -489,6 +652,14 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
     };
 
     const bands = ['60', '150', '400', '1K', '2.4K', '6K', '12K', '15K'];
+    const canAnalyzeStems = Boolean(
+        isLoaded &&
+        inputType !== 'external' &&
+        sourceFilePath &&
+        window.electronAPI?.analyzeStems &&
+        window.electronAPI?.readAudioFile
+    );
+    const stemControlsEnabled = stemStatus === 'ready';
 
     return (
         <div className={`p-6 rounded-3xl bg-zinc-900 border ${borderColor} shadow-2xl relative overflow-hidden transition-all duration-300 w-full`}>
@@ -944,6 +1115,72 @@ const DeckControls: React.FC<DeckControlsProps> = ({ deck, title, color, externa
                     <div className={`text-xs font-mono ${accentColor} truncate z-10 w-full text-center`}>{trackName}</div>
                     {/* Spectrum bg visual (fake) */}
                     <div className={`absolute bottom-0 right-0 left-0 h-4 bg-gradient-to-t ${color === 'blue' ? 'from-blue-500/10' : 'from-purple-500/10'} to-transparent`}></div>
+                </div>
+
+                <div className="w-full rounded-lg border border-white/10 bg-black/30 p-2.5">
+                    <div className="flex items-center gap-2 mb-2 min-w-0">
+                        <div className={`text-[10px] font-black tracking-widest shrink-0 ${accentColor}`}>AI STEMS</div>
+                        <div className={`text-[9px] font-mono truncate flex-1 ${stemStatus === 'error' ? 'text-red-300' : 'text-gray-500'}`}>
+                            {stemStatus === 'idle' ? (sourceFilePath ? 'READY TO ANALYZE' : 'LOCAL FILE ONLY') : stemMessage}
+                        </div>
+                        <button
+                            onClick={handleAnalyzeStems}
+                            disabled={!canAnalyzeStems || stemStatus === 'analyzing'}
+                            title={canAnalyzeStems ? 'Analyze stems offline' : 'Load a local file before analyzing stems'}
+                            className={`h-8 px-3 rounded-md border text-[9px] font-black tracking-wider transition-all shrink-0 flex items-center justify-center gap-2
+                                ${canAnalyzeStems && stemStatus !== 'analyzing'
+                                    ? 'bg-white text-black border-white hover:bg-gray-200'
+                                    : 'bg-white/5 text-gray-600 border-white/10 cursor-not-allowed'
+                                }`}
+                        >
+                            {stemStatus === 'analyzing' && (
+                                <span className="w-3 h-3 border-2 border-gray-500 border-t-white rounded-full animate-spin"></span>
+                            )}
+                            {stemStatus === 'analyzing' ? 'WAIT' : 'ANALYZE'}
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2">
+                        {STEM_NAMES.map((stem) => (
+                            <button
+                                key={stem}
+                                onClick={() => toggleStem(stem)}
+                                disabled={!stemControlsEnabled}
+                                title={`Toggle ${STEM_LABELS[stem].toLowerCase()} stem`}
+                                className={`h-9 rounded-md border text-[10px] font-black tracking-wider transition-all
+                                    ${stemControlsEnabled
+                                        ? stemMix[stem]
+                                            ? `${STEM_ACTIVE_CLASSES[stem]} hover:brightness-125`
+                                            : 'bg-black/50 border-white/10 text-gray-600 hover:text-gray-300'
+                                        : 'bg-black/30 border-white/5 text-gray-700 cursor-not-allowed'
+                                    }`}
+                            >
+                                {STEM_LABELS[stem]}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2 mt-2">
+                        {[
+                            ['all', 'ALL'],
+                            ['acapella', 'ACAP'],
+                            ['instrumental', 'INSTR'],
+                            ['drums', 'DRUMS']
+                        ].map(([preset, label]) => (
+                            <button
+                                key={preset}
+                                onClick={() => handleStemPreset(preset as 'all' | 'acapella' | 'instrumental' | 'drums')}
+                                disabled={!stemControlsEnabled}
+                                className={`h-7 rounded border text-[9px] font-bold tracking-wider transition-colors
+                                    ${stemControlsEnabled
+                                        ? 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white'
+                                        : 'bg-white/[0.03] border-white/5 text-gray-700 cursor-not-allowed'
+                                    }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-center relative">

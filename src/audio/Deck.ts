@@ -5,6 +5,18 @@ import { Reverb } from './Reverb';
 import { Delay } from './Delay';
 import { NoiseGate } from './NoiseGate';
 
+export type StemName = 'vocals' | 'drums' | 'bass' | 'other';
+export type StemArrayBuffers = Record<StemName, ArrayBuffer>;
+export type StemEnabledState = Record<StemName, boolean>;
+
+const STEM_NAMES: StemName[] = ['vocals', 'drums', 'bass', 'other'];
+const DEFAULT_STEM_STATE: StemEnabledState = {
+    vocals: true,
+    drums: true,
+    bass: true,
+    other: true
+};
+
 export class Deck {
     private context: AudioContext;
     private gainNode: GainNode;
@@ -16,6 +28,11 @@ export class Deck {
     public noiseGate: NoiseGate;
     private sourceNode: AudioBufferSourceNode | MediaStreamAudioSourceNode | null = null;
     private buffer: AudioBuffer | null = null;
+    private stemBuffers: Record<StemName, AudioBuffer> | null = null;
+    private stemGainNodes: Record<StemName, GainNode>;
+    private stemSourceNodes: Record<StemName, AudioBufferSourceNode | null>;
+    private stemEnabled: StemEnabledState = { ...DEFAULT_STEM_STATE };
+    private stemDuration = 0;
     private pausedAt = 0;
     private startedAt = 0;
     private isPlaying = false;
@@ -33,8 +50,27 @@ export class Deck {
         this.reverb = new Reverb(this.context);
         this.delay = new Delay(this.context);
         this.noiseGate = new NoiseGate(this.context);
+        this.stemGainNodes = this.createStemGainNodes();
+        this.stemSourceNodes = this.createEmptyStemSources();
 
         this.setupAudioChain();
+    }
+
+    private createStemGainNodes(): Record<StemName, GainNode> {
+        return STEM_NAMES.reduce((nodes, stem) => {
+            const gain = this.context.createGain();
+            gain.gain.value = this.stemEnabled[stem] ? 1 : 0;
+            gain.connect(this.eq.input);
+            nodes[stem] = gain;
+            return nodes;
+        }, {} as Record<StemName, GainNode>);
+    }
+
+    private createEmptyStemSources(): Record<StemName, AudioBufferSourceNode | null> {
+        return STEM_NAMES.reduce((nodes, stem) => {
+            nodes[stem] = null;
+            return nodes;
+        }, {} as Record<StemName, AudioBufferSourceNode | null>);
     }
 
     private setupAudioChain() {
@@ -54,6 +90,7 @@ export class Deck {
 
     public async load(fileArrayBuffer: ArrayBuffer): Promise<void> {
         this.stop();
+        this.clearStemBuffers();
         try {
             this.buffer = await this.context.decodeAudioData(fileArrayBuffer);
             this.pausedAt = 0; // Reset on new load
@@ -67,9 +104,38 @@ export class Deck {
         }
     }
 
+    public async loadStems(stemArrayBuffers: StemArrayBuffers): Promise<void> {
+        const decodedPairs = await Promise.all(
+            STEM_NAMES.map(async (stem) => {
+                const buffer = await this.context.decodeAudioData(stemArrayBuffers[stem].slice(0));
+                return [stem, buffer] as const;
+            })
+        );
+
+        const wasPlaying = this.isPlaying;
+        const currentPosition = Math.min(this.getCurrentTime(), this.getDuration() || Number.POSITIVE_INFINITY);
+        this.stopSource();
+
+        this.stemBuffers = decodedPairs.reduce((buffers, [stem, buffer]) => {
+            buffers[stem] = buffer;
+            return buffers;
+        }, {} as Record<StemName, AudioBuffer>);
+        this.stemDuration = Math.max(...decodedPairs.map(([, buffer]) => buffer.duration));
+        this.pausedAt = Number.isFinite(currentPosition)
+            ? Math.min(currentPosition, this.stemDuration)
+            : 0;
+        this.startedAt = 0;
+        this.setStemMix(this.stemEnabled);
+
+        if (wasPlaying) {
+            this.play();
+        }
+    }
+
     public async loadStream(stream: MediaStream): Promise<void> {
         this.stop();
         this.buffer = null; // Clear buffer if switching to stream
+        this.clearStemBuffers();
 
         this.sourceNode = this.context.createMediaStreamSource(stream);
         this.sourceNode.connect(this.eq.input);
@@ -77,13 +143,80 @@ export class Deck {
         this.startedAt = 0;
     }
 
+    private clearStemBuffers() {
+        this.stopStemSources();
+        this.stemBuffers = null;
+        this.stemDuration = 0;
+        this.stemEnabled = { ...DEFAULT_STEM_STATE };
+        this.setStemMix(this.stemEnabled);
+    }
+
+    private hasStemBuffers(): boolean {
+        return this.stemBuffers !== null;
+    }
+
+    private hasTimeline(): boolean {
+        return this.buffer !== null || this.hasStemBuffers();
+    }
+
+    private hasActiveStemSources(): boolean {
+        return STEM_NAMES.some(stem => this.stemSourceNodes[stem] !== null);
+    }
+
+    private getActiveBufferSources(): AudioBufferSourceNode[] {
+        const sources: AudioBufferSourceNode[] = [];
+
+        if (this.sourceNode instanceof AudioBufferSourceNode) {
+            sources.push(this.sourceNode);
+        }
+
+        STEM_NAMES.forEach(stem => {
+            const source = this.stemSourceNodes[stem];
+            if (source) {
+                sources.push(source);
+            }
+        });
+
+        return sources;
+    }
+
+    private clampOffset(buffer: AudioBuffer, time: number): number {
+        if (buffer.duration <= 0) return 0;
+        return Math.max(0, Math.min(time, Math.max(0, buffer.duration - 0.01)));
+    }
+
+    private isLoopReady(): boolean {
+        return this.loopStartPoint !== null && this.loopEndPoint !== null && this.loopEndPoint > this.loopStartPoint;
+    }
+
+    private stopStemSources() {
+        STEM_NAMES.forEach(stem => {
+            const source = this.stemSourceNodes[stem];
+            if (!source) return;
+
+            try {
+                source.stop();
+                source.disconnect();
+            } catch {
+                // Ignore errors if already stopped.
+            }
+
+            this.stemSourceNodes[stem] = null;
+        });
+    }
+
     public play() {
-        if (!this.buffer && !(this.sourceNode instanceof MediaStreamAudioSourceNode)) return;
+        if (!this.hasTimeline() && !(this.sourceNode instanceof MediaStreamAudioSourceNode)) return;
 
         // If it's a stream, it's already connected in loadStream, we just need to verify logic?
         // Actually loadStream connects it. For stream, 'play' mostly just means internal state tracking.
         if (this.sourceNode instanceof MediaStreamAudioSourceNode) {
             this.isPlaying = true;
+            return;
+        }
+
+        if (this.stemBuffers) {
+            this.playStemSources();
             return;
         }
 
@@ -111,10 +244,45 @@ export class Deck {
         this.sourceNode.playbackRate.value = this.playbackRate;
 
         // Start from paused position
-        this.sourceNode.start(0, this.pausedAt);
+        this.sourceNode.start(0, this.clampOffset(this.buffer, this.pausedAt));
 
         // Record relative start time
         this.startedAt = this.context.currentTime - (this.pausedAt / this.playbackRate); // Correct for rate
+        this.isPlaying = true;
+    }
+
+    private playStemSources() {
+        if (!this.stemBuffers) return;
+
+        this.stopSource();
+        const startTime = Math.min(this.pausedAt, this.stemDuration);
+
+        STEM_NAMES.forEach(stem => {
+            const source = this.context.createBufferSource();
+            const buffer = this.stemBuffers?.[stem];
+            if (!buffer) return;
+
+            source.buffer = buffer;
+            source.playbackRate.value = this.playbackRate;
+            source.connect(this.stemGainNodes[stem]);
+
+            if (this.isLoopReady()) {
+                source.loopStart = this.loopStartPoint!;
+                source.loopEnd = this.loopEndPoint!;
+                source.loop = true;
+            }
+
+            source.onended = () => {
+                if (this.stemSourceNodes[stem] === source) {
+                    this.stemSourceNodes[stem] = null;
+                }
+            };
+
+            source.start(0, this.clampOffset(buffer, startTime));
+            this.stemSourceNodes[stem] = source;
+        });
+
+        this.startedAt = this.context.currentTime - (startTime / this.playbackRate);
         this.isPlaying = true;
     }
 
@@ -127,13 +295,13 @@ export class Deck {
             return;
         }
 
-        if (this.sourceNode) {
+        if (this.sourceNode || this.hasActiveStemSources()) {
             // Calculate elapsed time
             // Account for playback rate in time calculation? 
             // Simple approach: AudioContext time flows linearly.
             // If rate was 1.0 mostly:
             const elapsed = (this.context.currentTime - this.startedAt) * this.playbackRate;
-            this.pausedAt = elapsed;
+            this.pausedAt = Math.min(elapsed, this.getDuration() || elapsed);
 
             this.stopSource();
         }
@@ -149,6 +317,8 @@ export class Deck {
     }
 
     private stopSource() {
+        this.stopStemSources();
+
         if (this.sourceNode) {
             try {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -167,6 +337,29 @@ export class Deck {
         this.gainNode.gain.setTargetAtTime(value, this.context.currentTime, 0.01);
     }
 
+    public hasStems(): boolean {
+        return this.hasStemBuffers();
+    }
+
+    public getStemEnabled(): StemEnabledState {
+        return { ...this.stemEnabled };
+    }
+
+    public setStemEnabled(stem: StemName, enabled: boolean) {
+        this.stemEnabled = {
+            ...this.stemEnabled,
+            [stem]: enabled
+        };
+
+        const targetGain = enabled ? 1 : 0;
+        this.stemGainNodes[stem].gain.setTargetAtTime(targetGain, this.context.currentTime, 0.01);
+    }
+
+    public setStemMix(nextState: StemEnabledState) {
+        STEM_NAMES.forEach(stem => {
+            this.setStemEnabled(stem, nextState[stem]);
+        });
+    }
 
     public setEQGain(bandIndex: number, gain: number) {
         this.eq.setGain(bandIndex, gain);
@@ -186,6 +379,7 @@ export class Deck {
 
     // --- SEEKING ---
     public getDuration(): number {
+        if (this.stemBuffers) return this.stemDuration;
         return this.buffer ? this.buffer.duration : 0;
     }
 
@@ -203,17 +397,15 @@ export class Deck {
         let currentTime = (now - this.startedAt) * this.playbackRate;
 
         // If loop is active, wrap the time within the loop range
-        if (this.loopStartPoint !== null && this.loopEndPoint !== null &&
-            this.sourceNode && this.sourceNode instanceof AudioBufferSourceNode &&
-            this.sourceNode.loop) {
+        if (this.isLoopReady() && this.getActiveBufferSources().some(source => source.loop)) {
 
-            const loopDuration = this.loopEndPoint - this.loopStartPoint;
+            const loopDuration = this.loopEndPoint! - this.loopStartPoint!;
 
             // If we're past the loop end, calculate position within loop
-            if (currentTime >= this.loopEndPoint) {
+            if (currentTime >= this.loopEndPoint!) {
                 // Calculate how far past the loop start we are
-                const timeIntoLoop = (currentTime - this.loopStartPoint) % loopDuration;
-                currentTime = this.loopStartPoint + timeIntoLoop;
+                const timeIntoLoop = (currentTime - this.loopStartPoint!) % loopDuration;
+                currentTime = this.loopStartPoint! + timeIntoLoop;
             }
         }
 
@@ -221,10 +413,10 @@ export class Deck {
     }
 
     public seek(time: number) {
-        if (!this.buffer) return;
+        if (!this.hasTimeline()) return;
 
         // Clamp time
-        time = Math.max(0, Math.min(time, this.buffer.duration));
+        time = Math.max(0, Math.min(time, this.getDuration()));
 
         const wasPlaying = this.isPlaying;
 
@@ -259,6 +451,12 @@ export class Deck {
             if (this.sourceNode instanceof AudioBufferSourceNode) {
                 this.sourceNode.playbackRate.setValueAtTime(rate, now);
             }
+            STEM_NAMES.forEach(stem => {
+                const source = this.stemSourceNodes[stem];
+                if (source) {
+                    source.playbackRate.setValueAtTime(rate, now);
+                }
+            });
         } else {
             // If not playing, just update rate. Current time (pausedAt) stays same.
             this.playbackRate = rate;
@@ -269,13 +467,16 @@ export class Deck {
     }
 
     public brake() {
-        if (this.sourceNode instanceof AudioBufferSourceNode) {
+        const sources = this.getActiveBufferSources();
+        if (sources.length > 0) {
             // Ramp down speed to 0 over 1 second (simulating vinyl stop)
             const now = this.context.currentTime;
-            this.sourceNode.playbackRate.cancelScheduledValues(now);
-            this.sourceNode.playbackRate.setValueAtTime(this.playbackRate, now);
-            // Linear ramp to almost 0 (0 causes issues sometimes, use 0.001)
-            this.sourceNode.playbackRate.linearRampToValueAtTime(0.001, now + 1.0);
+            sources.forEach(source => {
+                source.playbackRate.cancelScheduledValues(now);
+                source.playbackRate.setValueAtTime(this.playbackRate, now);
+                // Linear ramp to almost 0 (0 causes issues sometimes, use 0.001)
+                source.playbackRate.linearRampToValueAtTime(0.001, now + 1.0);
+            });
 
             // Wait for brake to finish then stop logic
             setTimeout(() => {
@@ -292,7 +493,7 @@ export class Deck {
 
     public setLoopIn() {
         // Allow setting loop points even when paused
-        if (!this.buffer) return;
+        if (!this.hasTimeline()) return;
 
         const currentTime = this.getCurrentTime();
         this.loopStartPoint = currentTime;
@@ -306,7 +507,7 @@ export class Deck {
 
     public setLoopOut() {
         // Allow setting loop points even when paused
-        if (!this.buffer) return;
+        if (!this.hasTimeline()) return;
         const currentTime = this.getCurrentTime();
 
         if (this.loopStartPoint !== null && currentTime > this.loopStartPoint) {
@@ -314,7 +515,7 @@ export class Deck {
             console.log('Loop Out set at:', this.loopEndPoint);
 
             // If currently playing, engage the loop immediately
-            if (this.sourceNode && this.sourceNode instanceof AudioBufferSourceNode) {
+            if (this.sourceNode instanceof AudioBufferSourceNode || this.hasActiveStemSources()) {
                 this.engageLoop();
             }
         }
@@ -325,6 +526,12 @@ export class Deck {
         if (this.sourceNode && this.sourceNode instanceof AudioBufferSourceNode) {
             this.sourceNode.loop = false;
         }
+        STEM_NAMES.forEach(stem => {
+            const source = this.stemSourceNodes[stem];
+            if (source) {
+                source.loop = false;
+            }
+        });
         // Clear loop points so they don't re-engage on next play
         this.loopStartPoint = null;
         this.loopEndPoint = null;
@@ -332,15 +539,15 @@ export class Deck {
     }
 
     private engageLoop() {
-        if (this.sourceNode &&
-            this.sourceNode instanceof AudioBufferSourceNode &&
-            this.loopStartPoint !== null &&
-            this.loopEndPoint !== null) {
+        if (!this.isLoopReady()) return;
 
-            this.sourceNode.loopStart = this.loopStartPoint;
-            this.sourceNode.loopEnd = this.loopEndPoint;
-            this.sourceNode.loop = true;
-        }
+        const loopStart = this.loopStartPoint!;
+        const loopEnd = this.loopEndPoint!;
+        this.getActiveBufferSources().forEach(source => {
+            source.loopStart = loopStart;
+            source.loopEnd = loopEnd;
+            source.loop = true;
+        });
     }
 
     // --- SAMPLER ---
@@ -367,7 +574,7 @@ export class Deck {
             try {
                 node.stop();
                 node.disconnect();
-            } catch (e) {
+            } catch {
                 // Ignore errors if already stopped
             }
         });

@@ -1,6 +1,25 @@
 
 import { useState, useCallback } from 'react';
 
+interface YoutubeLoadObject {
+    buffer: Uint8Array;
+    title: string;
+    sourceFilePath?: string;
+}
+
+type YoutubeLoadResponse = ArrayBuffer | Uint8Array | YoutubeLoadObject;
+
+const isYoutubeLoadObject = (response: YoutubeLoadResponse): response is YoutubeLoadObject => {
+    return response !== null && typeof response === 'object' && 'buffer' in response && 'title' in response;
+};
+
+const toAudioArrayBuffer = (data: ArrayBuffer | Uint8Array): ArrayBuffer => {
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+};
+
 export interface QueueItem {
     id: string;
     type: 'file' | 'youtube';
@@ -10,6 +29,7 @@ export interface QueueItem {
     duration: number;
     targetDeck: 'A' | 'B';
     preloadedBuffer?: ArrayBuffer; // Pre-loaded audio buffer for instant playback
+    sourceFilePath?: string;
 }
 
 export function useMusicQueue() {
@@ -47,20 +67,19 @@ export function useMusicQueue() {
             try {
                 console.log(`[Queue] Pre-loading YouTube track: ${name}`);
                 const response = await window.electronAPI.loadYoutube(url);
+                const youtubeResponse = response as YoutubeLoadResponse;
+                const rawBuffer = isYoutubeLoadObject(youtubeResponse)
+                    ? youtubeResponse.buffer
+                    : youtubeResponse;
+                const arrayBuffer = toAudioArrayBuffer(rawBuffer);
+                const sourceFilePath = isYoutubeLoadObject(youtubeResponse)
+                    ? youtubeResponse.sourceFilePath
+                    : undefined;
 
-                let rawBuffer: any;
-                if (response && (response as any).buffer) {
-                    rawBuffer = (response as any).buffer;
-                } else {
-                    rawBuffer = response;
-                }
-
-                const arrayBuffer = (rawBuffer as any).buffer ? (rawBuffer as any).buffer : rawBuffer;
-
-                // Update the queue item with pre-loaded buffer
+                // Update the queue item with pre-loaded buffer and source path for stem analysis.
                 setQueue(prev => prev.map(item =>
                     item.id === itemId
-                        ? { ...item, preloadedBuffer: arrayBuffer }
+                        ? { ...item, preloadedBuffer: arrayBuffer, sourceFilePath }
                         : item
                 ));
 

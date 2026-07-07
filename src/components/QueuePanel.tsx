@@ -2,6 +2,13 @@
 import React, { useRef, useState } from 'react';
 import type { QueueItem } from '../hooks/useMusicQueue';
 
+interface YoutubeSearchResult {
+    id: string;
+    title: string;
+    channel: string;
+    thumbnail: string;
+}
+
 interface QueuePanelProps {
     queue: QueueItem[];
     addToQueue: (file: File, deckId: 'A' | 'B') => void;
@@ -10,7 +17,7 @@ interface QueuePanelProps {
     clearQueue: () => void;
     moveItem: (fromIndex: number, toIndex: number) => void;
     onLoadToDeck: (file: File, deckId: 'A' | 'B') => void;
-    onLoadYoutubeToDeck: (url: string, deckId: 'A' | 'B', preloadedBuffer?: ArrayBuffer, title?: string) => void;
+    onLoadYoutubeToDeck: (url: string, deckId: 'A' | 'B', preloadedBuffer?: ArrayBuffer, title?: string, sourceFilePath?: string) => void;
     onClose: () => void;
 }
 
@@ -21,7 +28,7 @@ const QueuePanel: React.FC<QueuePanelProps> = ({ queue, addToQueue, addYoutubeTo
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [selectedDeck, setSelectedDeck] = useState<'A' | 'B'>('A');
     const [isSearching, setIsSearching] = useState(false);
-    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [searchResults, setSearchResults] = useState<YoutubeSearchResult[]>([]);
     const [apiKey] = useState(localStorage.getItem('yt_api_key') || '');
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -317,7 +324,7 @@ const QueuePanel: React.FC<QueuePanelProps> = ({ queue, addToQueue, addYoutubeTo
                                             onLoadToDeck(item.file, 'A');
                                             removeFromQueue(item.id);
                                         } else if (item.type === 'youtube' && item.youtubeUrl) {
-                                            onLoadYoutubeToDeck(item.youtubeUrl, 'A', item.preloadedBuffer, item.name);
+                                            onLoadYoutubeToDeck(item.youtubeUrl, 'A', item.preloadedBuffer, item.name, item.sourceFilePath);
                                             removeFromQueue(item.id);
                                         }
                                     }}
@@ -331,7 +338,7 @@ const QueuePanel: React.FC<QueuePanelProps> = ({ queue, addToQueue, addYoutubeTo
                                             onLoadToDeck(item.file, 'B');
                                             removeFromQueue(item.id);
                                         } else if (item.type === 'youtube' && item.youtubeUrl) {
-                                            onLoadYoutubeToDeck(item.youtubeUrl, 'B', item.preloadedBuffer, item.name);
+                                            onLoadYoutubeToDeck(item.youtubeUrl, 'B', item.preloadedBuffer, item.name, item.sourceFilePath);
                                             removeFromQueue(item.id);
                                         }
                                     }}

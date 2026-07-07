@@ -6,6 +6,16 @@ interface AnimatedBackgroundProps {
 }
 
 const AnimatedBackground: React.FC<AnimatedBackgroundProps> = ({ themeName = 'default', customVideo }) => {
+    const [particles] = React.useState(() =>
+        Array.from({ length: 20 }, (_, i) => ({
+            id: i,
+            left: `${Math.random() * 100}%`,
+            top: `${Math.random() * 100}%`,
+            animationDelay: `${Math.random() * 5}s`,
+            animationDuration: `${3 + Math.random() * 4}s`,
+        }))
+    );
+
     // Show custom video if provided
     if (customVideo) {
         return (
@@ -242,15 +252,15 @@ const AnimatedBackground: React.FC<AnimatedBackgroundProps> = ({ themeName = 'de
             </div>
 
             {/* Animated particles */}
-            {[...Array(20)].map((_, i) => (
+            {particles.map((particle) => (
                 <div
-                    key={i}
+                    key={particle.id}
                     className="absolute w-1 h-1 bg-white/40 rounded-full animate-particle"
                     style={{
-                        left: `${Math.random() * 100}%`,
-                        top: `${Math.random() * 100}%`,
-                        animationDelay: `${Math.random() * 5}s`,
-                        animationDuration: `${3 + Math.random() * 4}s`
+                        left: particle.left,
+                        top: particle.top,
+                        animationDelay: particle.animationDelay,
+                        animationDuration: particle.animationDuration,
                     }}
                 ></div>
             ))}

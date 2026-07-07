@@ -23,6 +23,7 @@
 - **Noise Gate**: Adjustable threshold to eliminate background hiss from external inputs.
 - **Reverb**: Room simulation effect for adding space to the mix.
 - **Delay**: Echo/Delay effect for creative transitions.
+- **AI Stem Separation**: Optional offline `Analyze Stems` workflow separates vocals, drums, bass, and instruments for local files and downloaded YouTube links. API/player-only streams without a local download are not supported.
 
 ### 🎹 Sampler
 - **4-Pad Bank**: Load one-shot samples (drums, FX, vocals) for instant triggering.
@@ -68,6 +69,12 @@ Prerequisites: Node.js (v16+) and npm/yarn.
     npm install
     ```
 
+3.  **Optional stem separation support**
+    ```bash
+    pip install -r backend/requirements-stems.txt
+    ```
+    You can also click `Install AI Stems` in the upper ribbon. Stem separation uses Demucs locally and only runs when you click `Analyze Stems`.
+
 ## 🏃‍♂️ Usage
 
 ### Development Mode
@@ -111,6 +118,8 @@ src/
 | **Load Track** | "FILE" Button or Drag & Drop |
 | **Tempo** | Vertical Slider (Right) |
 | **Loop** | IN -> OUT to set, EXIT to release |
+| **Stem Analysis** | Load a local track, then click `Analyze Stems` |
+| **Stem Mute/Isolate** | Use `VOCAL`, `DRUM`, `BASS`, `INST`, `ACAP`, `INSTR`, or `DRUMS` |
 | **Isolator** | Low/Mid/High Knobs (Bottom creates Silence) |
 | **Unload Sample** | Right-Click Pad |
 | **Tutorial** | Click "TUTORIAL" in Top Ribbon |

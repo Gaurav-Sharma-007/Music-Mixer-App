@@ -8,9 +8,15 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.venv
+downloads/*
+!downloads/BLANCDJ Setup 2.0.0.exe
+stems
 dist
 dist-ssr
 *.local
+__pycache__/
+*.py[cod]
 
 # Editor directories and files
 .vscode/*

@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
     },
     searchYoutube: (query, apiKey) => ipcRenderer.invoke('YOUTUBE_SEARCH', query, apiKey),
+    analyzeStems: (filePath) => ipcRenderer.invoke('ANALYZE_STEMS', filePath),
+    readAudioFile: (filePath) => ipcRenderer.invoke('READ_AUDIO_FILE', filePath),
+    installStemRequirements: () => ipcRenderer.invoke('INSTALL_STEM_REQUIREMENTS'),
     getFilePath: (file) => webUtils.getPathForFile(file)
 });
 

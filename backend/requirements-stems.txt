@@ -1,0 +1,5 @@
+# Optional: enables the offline "Analyze Stems" feature.
+# Install separately so normal app startup stays lightweight:
+# pip install -r backend/requirements-stems.txt
+demucs>=4.0.1
+torchcodec
